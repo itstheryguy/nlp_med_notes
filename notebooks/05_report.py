@@ -5,7 +5,7 @@
 # MAGIC For one job run (default: the latest):
 # MAGIC 1. **Model comparison:** mean ± std over seeds, on the test split. Overlap metrics, tier-1 audit, judge audit.
 # MAGIC 2. **Audit calibration:** how well the free tier-1 grounding flag predicts what the judge finds.
-# MAGIC 3. **Efficiency and cost:** GPU minutes per run (actual vs estimate), an estimated cost, and actual billed
+# MAGIC 3. **Efficiency and cost:** training minutes per run (actual vs estimate), an optional estimated cost, and actual billed
 # MAGIC    cost from `system.billing` once it lands (usually within a few hours).
 # MAGIC 4. **Side by side:** one dialogue, every model's note, and the judge's verdict.
 
@@ -15,7 +15,7 @@ dbutils.widgets.text("catalog", "workspace", "Catalog")
 dbutils.widgets.text("schema", "med_notes", "Schema")
 dbutils.widgets.text("job_run_id", "", "Job run ID (blank = latest)")
 dbutils.widgets.text("job_id", "", "Job ID (for billing lookup)")
-dbutils.widgets.text("gpu_usd_per_hour", "4.90", "Estimated $ per A10 GPU-hour")
+dbutils.widgets.text("train_usd_per_hour", "0", "Estimated $ per training hour (0 = skip)")
 catalog, schema = dbutils.widgets.get("catalog"), dbutils.widgets.get("schema")
 spark.sql(f"USE {catalog}.{schema}")
 
@@ -105,16 +105,18 @@ if has_judge:
 
 # COMMAND ----------
 
-usd_per_hour = float(dbutils.widgets.get("gpu_usd_per_hour"))
+usd_per_hour = float(dbutils.widgets.get("train_usd_per_hour"))
 eff = spark.sql(f"""
     SELECT experiment, status, round(estimated_minutes, 1) AS estimated_minutes, round(minutes, 1) AS actual_minutes,
            round(train_minutes, 1) AS train_minutes, best_epoch, epochs_run, num_params_m
     FROM runs WHERE job_run_id = '{job_run_id}' ORDER BY experiment
 """).toPandas()
 display(eff)
-gpu_min = eff["actual_minutes"].sum()
-print(f"Run time inside the GPU session: {gpu_min:.1f} min ≈ ${gpu_min / 60 * usd_per_hour:.2f} at ${usd_per_hour}/GPU-hour "
-      "(estimate: excludes session startup and package install; see billed cost below)")
+train_min = eff["actual_minutes"].sum()
+print(f"Run time inside the training session: {train_min:.1f} min")
+if usd_per_hour > 0:
+    print(f"≈ ${train_min / 60 * usd_per_hour:.2f} at ${usd_per_hour}/hour (estimate: excludes startup and package "
+          "install; see billed cost below)")
 
 # COMMAND ----------
 
@@ -124,14 +126,14 @@ if job_id:
         spark.sql(f"""
         CREATE OR REPLACE VIEW v_job_run_costs AS
         SELECT u.usage_metadata.job_run_id AS job_run_id, u.billing_origin_product,
-               u.product_features.serverless_gpu IS NOT NULL AS is_gpu,
+               u.product_features.serverless_gpu IS NOT NULL AS is_gpu, u.sku_name,
                round(sum(u.usage_quantity), 3) AS dbus, round(sum(u.usage_quantity * p.pricing.default), 2) AS list_usd
         FROM system.billing.usage u
         JOIN system.billing.list_prices p
           ON u.sku_name = p.sku_name AND u.usage_start_time >= p.price_start_time
          AND (p.price_end_time IS NULL OR u.usage_start_time < p.price_end_time)
         WHERE u.usage_metadata.job_id = '{job_id}'
-        GROUP BY 1, 2, 3
+        GROUP BY 1, 2, 3, 4
         """)
         display(spark.sql(f"SELECT * FROM v_job_run_costs WHERE job_run_id = '{job_run_id}'"))
         print("Empty? Billing data usually lands within a few hours; rerun this cell later.")

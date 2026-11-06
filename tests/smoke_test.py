@@ -115,7 +115,7 @@ def check_runner_and_ingest(exps, silver):
         run_dir, models_dir = os.path.join(tmp, "run"), os.path.join(tmp, "models")
         os.makedirs(run_dir)
         plan = {"job_run_id": "test", "experiments": [c.to_dict() for c in runs], "eval_splits": ["val", "test"],
-                "max_gpu_minutes": 60, "models_dir": models_dir}
+                "max_train_minutes": 60, "models_dir": models_dir}
         status = run_plan(json.loads(json.dumps(plan)), small, run_dir, bertscore_model="distilbert-base-uncased")
         got = {s["experiment"]: s["status"] for s in status}
         assert got == {"biobart_s13": "succeeded", "biobart_s42": "succeeded", "t5_base_s13": "succeeded",

@@ -1,11 +1,11 @@
-"""The GPU session: train + evaluate every planned run back to back, inside one GPU allocation.
+"""The training session: train + evaluate every planned run back to back, inside one compute allocation.
 
 Contract with the CPU tasks (all files under run_dir, a UC volume folder per job run):
   in:  plan.json, splits.parquet                  (written by 01_prepare_data)
   out: <run>/predictions.parquet, <run>/losses.parquet, status.json   (read by 03_ingest_results)
 
 Production habits for a shared budget:
-  - budget guard: a run is skipped, not started, if its estimated duration would pass max_gpu_minutes
+  - budget guard: a run is skipped, not started, if its estimated duration would pass max_train_minutes
   - failure isolation: one run crashing is recorded and the session moves on to the next
   - incremental status: status.json is rewritten after every run, so a timeout keeps finished work
 """
@@ -40,8 +40,8 @@ def run_plan(plan: dict, splits_df: pd.DataFrame, run_dir: str, use_mlflow: bool
 
     import torch
 
-    gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"
-    max_minutes = float(plan["max_gpu_minutes"])
+    gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else f"cpu x{torch.get_num_threads()}"
+    max_minutes = float(plan["max_train_minutes"])
     session_start = time.time()
     family_minutes: dict[str, float] = {}  # measured duration of the first finished run per family
     best_by_family: dict[str, float] = {}  # lowest val loss saved per family this session
@@ -58,7 +58,7 @@ def run_plan(plan: dict, splits_df: pd.DataFrame, run_dir: str, use_mlflow: bool
             entry.update(status="skipped_budget", minutes=0.0)
             log(f"SKIP {cfg.name}: {elapsed:.0f} min used + ~{estimate:.0f} min > budget {max_minutes:.0f} min")
             status.append(entry)
-            _write_json(status_path, {"gpu_minutes_used": round(elapsed, 2), "runs": status})
+            _write_json(status_path, {"train_minutes_used": round(elapsed, 2), "runs": status})
             continue
 
         run_start = time.time()
@@ -136,6 +136,6 @@ def run_plan(plan: dict, splits_df: pd.DataFrame, run_dir: str, use_mlflow: bool
 
         entry["finished_at"] = datetime.now(timezone.utc).isoformat()
         status.append(entry)
-        _write_json(status_path, {"gpu_minutes_used": round((time.time() - session_start) / 60, 2), "runs": status})
+        _write_json(status_path, {"train_minutes_used": round((time.time() - session_start) / 60, 2), "runs": status})
 
     return status

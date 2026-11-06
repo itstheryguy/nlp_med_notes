@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import time
 
 import pandas as pd
@@ -67,6 +68,7 @@ def train(cfg: ExperimentConfig, train_df: pd.DataFrame, val_df: pd.DataFrame, o
         set_seed,
     )
 
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     set_seed(cfg.seed)
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
     model = AutoModelForSeq2SeqLM.from_pretrained(cfg.model_name)
@@ -104,7 +106,9 @@ def train(cfg: ExperimentConfig, train_df: pd.DataFrame, val_df: pd.DataFrame, o
         logging_steps=10,
         report_to=report_to,
         disable_tqdm=True,
-        dataloader_num_workers=2,
+        # Worker processes deadlock with the tokenizer's thread pool after fork, and a hung run keeps
+        # billing until the task timeout. The data is pre-tokenized and tiny, so workers buy nothing.
+        dataloader_num_workers=0,
         **resolve_precision(cfg.precision),
     )
 

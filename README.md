@@ -63,7 +63,7 @@ ROUGE and BERTScore are still computed, but they can't tell a fluent hallucinati
 ### Cost and efficiency controls
 
 - **One GPU session for all runs,** so startup and package install are paid once. Everything else runs on serverless CPU.
-- **Budget guard:** a run is skipped, never started, when `elapsed + estimate > max_gpu_minutes`. The estimate is the model's `est_minutes` until its first seed finishes, then that run's measured time. The GPU task also has a 3-hour hard timeout and no retries.
+- **Budget guard:** a run is skipped, never started, when `elapsed + estimate > max_train_minutes`. The estimate is the model's `est_minutes` until its first seed finishes, then that run's measured time. The GPU task also has a 3-hour hard timeout and no retries.
 - **Failure isolation and incremental status:** one crashed run doesn't end the session, and `status.json` is rewritten after every run, so a timeout keeps finished work.
 - **Judge caps:** `judge_sample_size` (examples per run) and `judge_max_calls` (whole task). Token counts are stored per call.
 - **Monitoring:** the report shows actual vs estimated minutes per run and an estimated cost. `v_job_run_costs` joins `system.billing.usage` with list prices to show what each job run was actually billed, once billing data lands.
@@ -91,7 +91,7 @@ databricks bundle deploy -t dev      # creates the job, starts nothing
 databricks bundle run -t dev pipeline
 
 # 2. Full run: 3 models x 3 seeds
-databricks bundle run -t dev pipeline --params experiments=group:main,max_gpu_minutes=150,judge_sample_size=40
+databricks bundle run -t dev pipeline --params experiments=group:main,max_train_minutes=150,judge_sample_size=40
 ```
 
 The pilot's `runs.minutes` and the billed cost in `05_report` replace the cost estimates in `experiments.yml` before the full run.
@@ -114,7 +114,7 @@ python tests/smoke_test.py
 | `configs/experiments.yml` | models, recipes, seeds, run-time estimates |
 | `notebooks/00–05` | thin task notebooks |
 | `src/med_notes/` | `data`, `train`, `evaluation`, `audit` (tier 1), `judge` (tier 2), `runner` (GPU session), `ingest` |
-| `requirements-gpu.txt` | installed by the GPU task (a no-op where the AI environment already has them) |
+| `requirements-train.txt` | installed by the GPU task (a no-op where the AI environment already has them) |
 
 ## Known limitations
 

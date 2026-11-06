@@ -1,0 +1,11 @@
+# Installed by 02_train_evaluate. torch is installed separately by the notebook (the CPU-only build on
+# CPU compute, ~200 MB instead of ~2.5 GB of CUDA libraries). Already-satisfied packages are a no-op.
+transformers>=4.46
+datasets
+accelerate
+sentencepiece
+rouge_score
+bert_score
+pyyaml
+pyarrow
+mlflow-skinny

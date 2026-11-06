@@ -3,11 +3,12 @@
 #   databricks bundle validate
 #   databricks bundle deploy -t dev        # creates/updates the job; starts no compute
 #   databricks bundle run -t dev pipeline  # default params = the PILOT (1 BioBART run, 10 judge examples)
-#   databricks bundle run -t dev pipeline --params experiments=group:main,max_gpu_minutes=150,judge_sample_size=40
+#   databricks bundle run -t dev pipeline --params experiments=group:main,max_train_minutes=150,judge_sample_size=40
 #
-# Compute: this workspace is serverless-only. CPU tasks run on serverless jobs compute; the one GPU task
-# runs on Serverless GPU (1x A10) and is capped twice: the in-notebook budget guard (max_gpu_minutes)
-# and a hard task timeout (gpu_timeout_seconds).
+# Compute: everything runs on serverless jobs compute, including training (this account can't start
+# Serverless GPU: "AI Runtime is not available"). Training is capped twice: the in-notebook budget guard
+# (max_train_minutes) and a hard task timeout (train_timeout_seconds). To train on Serverless GPU where it's
+# available, see the commented block on the train_evaluate task.
 
 bundle:
   name: nlp_med_notes
@@ -24,8 +25,8 @@ variables:
   schema:
     description: Schema for tables and volumes
     default: med_notes
-  gpu_timeout_seconds:
-    description: Hard cap on the GPU task, a backstop for the budget guard. 3 h.
+  train_timeout_seconds:
+    description: Hard cap on the training task, a backstop for the budget guard. 3 h.
     default: 10800
 
 resources:
@@ -48,16 +49,17 @@ resources:
         - name: eval_splits
           default: val,test
         # The budget guard skips any run that would push the GPU session past this.
-        - name: max_gpu_minutes
-          default: "30"
+        - name: max_train_minutes
+          default: "90"
         - name: judge_endpoint
           default: databricks-gpt-oss-120b
         - name: judge_sample_size
           default: "10"
         - name: judge_max_calls
           default: "600"
-        - name: gpu_usd_per_hour
-          default: "4.90"
+        # Hourly rate for the report's quick cost estimate; 0 skips it (billed cost is shown regardless).
+        - name: train_usd_per_hour
+          default: "0"
         - name: refresh_data
           default: "false"
         - name: mlflow_experiment
@@ -70,14 +72,6 @@ resources:
         on_failure:
           - ${workspace.current_user.userName}
 
-      # The GPU task's environment. The AI environment ships torch and transformers with CUDA, so the
-      # notebook's %pip install only adds the few packages it lacks.
-      environments:
-        - environment_key: gpu
-          spec:
-            base_environment: databricks_ai_v6
-
-      # No cluster definitions: CPU tasks use serverless jobs compute; train_evaluate requests a GPU.
       tasks:
         - task_key: setup
           notebook_task:
@@ -92,10 +86,12 @@ resources:
         - task_key: train_evaluate
           depends_on:
             - task_key: prepare_data
-          environment_key: gpu
-          compute:
-            hardware_accelerator: GPU_1xA10
-          timeout_seconds: ${var.gpu_timeout_seconds}
+          # Serverless GPU instead of CPU: uncomment, plus a job-level
+          #   environments: [{environment_key: gpu, spec: {base_environment: databricks_ai_v6}}]
+          # environment_key: gpu
+          # compute:
+          #   hardware_accelerator: GPU_1xA10
+          timeout_seconds: ${var.train_timeout_seconds}
           max_retries: 0  # a retry would re-run (and re-bill) every run in the plan
           notebook_task:
             notebook_path: ./notebooks/02_train_evaluate.py

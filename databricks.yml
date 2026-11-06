@@ -70,6 +70,13 @@ resources:
         on_failure:
           - ${workspace.current_user.userName}
 
+      # The GPU task's environment. The AI environment ships torch and transformers with CUDA, so the
+      # notebook's %pip install only adds the few packages it lacks.
+      environments:
+        - environment_key: gpu
+          spec:
+            base_environment: databricks_ai_v6
+
       # No cluster definitions: CPU tasks use serverless jobs compute; train_evaluate requests a GPU.
       tasks:
         - task_key: setup
@@ -85,6 +92,7 @@ resources:
         - task_key: train_evaluate
           depends_on:
             - task_key: prepare_data
+          environment_key: gpu
           compute:
             hardware_accelerator: GPU_1xA10
           timeout_seconds: ${var.gpu_timeout_seconds}

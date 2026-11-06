@@ -1,0 +1,12 @@
+# Installed by 02_train_evaluate on Serverless GPU. Already-satisfied packages are a fast no-op,
+# so this works on both the AI environment (torch/transformers preinstalled) and the Standard one.
+torch
+transformers>=4.46
+datasets
+accelerate
+sentencepiece
+rouge_score
+bert_score
+pyyaml
+pyarrow
+mlflow-skinny

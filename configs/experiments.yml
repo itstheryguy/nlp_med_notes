@@ -1,0 +1,51 @@
+# Model recipes. Each entry is one model with one sensible training recipe; `seeds` repeats it so the
+# comparison is between models (mean ± spread over seeds), not between single runs.
+# Keys map to med_notes.config.ExperimentConfig.
+#
+# The `experiments` job parameter selects runs:
+#   group:main          the 3 models x 3 seeds
+#   group:pilot         one BioBART run, to measure real cost and timing before the full job
+#   biobart             every seed of one model
+#   biobart_s42         one run
+
+defaults:
+  seeds: [13, 42, 2026]
+  groups: [main]
+  include_section_header: true   # the section to write is known at inference time, so tell the model
+  max_epochs: 10
+  early_stopping_patience: 2     # stop after 2 epochs without val-loss improvement, keep the best epoch
+  batch_size: 8
+  grad_accum: 2                  # effective batch 16
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  label_smoothing: 0.1
+  save_model: true               # best seed per model goes to the models volume (for the Space)
+
+experiments:
+  # Domain-pretrained BART (PubMed). Small and fast: the main candidate for a CPU-hosted Space.
+  - name: biobart
+    model_name: GanjinZero/biobart-v2-base
+    learning_rate: 5.0e-5
+    est_minutes: 8
+
+  # General BART fine-tuned on CNN/DailyMail summarization. Largest model of the three.
+  - name: bart_large_cnn
+    model_name: facebook/bart-large-cnn
+    learning_rate: 3.0e-5
+    est_minutes: 18
+
+  # T5 fine-tunes at a much higher LR than BART-family models; 3e-5 badly undertrains it.
+  - name: t5_base
+    model_name: google-t5/t5-base
+    input_prefix: "summarize: "
+    learning_rate: 3.0e-4
+    est_minutes: 10
+
+  # One BioBART run, for checking real cost and timing before the full job.
+  - name: pilot_biobart
+    model_name: GanjinZero/biobart-v2-base
+    learning_rate: 5.0e-5
+    seeds: [42]
+    groups: [pilot]
+    save_model: false
+    est_minutes: 8

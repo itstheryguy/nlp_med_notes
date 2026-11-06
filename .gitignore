@@ -1,0 +1,21 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Databricks CLI / bundles
+.databricks/
+
+# OS / editor
+.DS_Store
+.vscode/
+
+# Local smoke-test output
+tests/output/
+
+# Original class notebook and report (kept locally for reference)
+nlp final project/

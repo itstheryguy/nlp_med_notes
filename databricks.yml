@@ -1,0 +1,125 @@
+# Databricks Asset Bundle: the training + audit pipeline as code.
+#
+#   databricks bundle validate
+#   databricks bundle deploy -t dev        # creates/updates the job; starts no compute
+#   databricks bundle run -t dev pipeline  # default params = the PILOT (1 BioBART run, 10 judge examples)
+#   databricks bundle run -t dev pipeline --params experiments=group:main,max_gpu_minutes=150,judge_sample_size=40
+#
+# Compute: this workspace is serverless-only. CPU tasks run on serverless jobs compute; the one GPU task
+# runs on Serverless GPU (1x A10) and is capped twice: the in-notebook budget guard (max_gpu_minutes)
+# and a hard task timeout (gpu_timeout_seconds).
+
+bundle:
+  name: nlp_med_notes
+
+sync:
+  exclude:
+    - "nlp final project/**"
+    - "tests/**"
+
+variables:
+  catalog:
+    description: Unity Catalog catalog
+    default: workspace
+  schema:
+    description: Schema for tables and volumes
+    default: med_notes
+  gpu_timeout_seconds:
+    description: Hard cap on the GPU task, a backstop for the budget guard. 3 h.
+    default: 10800
+
+resources:
+  experiments:
+    med_notes:
+      name: /Workspace/Users/${workspace.current_user.userName}/nlp_med_notes_${bundle.target}
+
+  jobs:
+    pipeline:
+      name: med_notes_pipeline
+      max_concurrent_runs: 1
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        # group:main (3 models x 3 seeds), group:pilot, a model name, or run names; see configs/experiments.yml
+        - name: experiments
+          default: group:pilot
+        - name: eval_splits
+          default: val,test
+        # The budget guard skips any run that would push the GPU session past this.
+        - name: max_gpu_minutes
+          default: "30"
+        - name: judge_endpoint
+          default: databricks-gpt-oss-120b
+        - name: judge_sample_size
+          default: "10"
+        - name: judge_max_calls
+          default: "600"
+        - name: gpu_usd_per_hour
+          default: "4.90"
+        - name: refresh_data
+          default: "false"
+        - name: mlflow_experiment
+          default: ${resources.experiments.med_notes.name}
+        - name: job_run_id
+          default: "{{job.run_id}}"
+        - name: job_id
+          default: "{{job.id}}"
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+
+      # No cluster definitions: CPU tasks use serverless jobs compute; train_evaluate requests a GPU.
+      tasks:
+        - task_key: setup
+          notebook_task:
+            notebook_path: ./notebooks/00_setup.py
+
+        - task_key: prepare_data
+          depends_on:
+            - task_key: setup
+          notebook_task:
+            notebook_path: ./notebooks/01_prepare_data.py
+
+        - task_key: train_evaluate
+          depends_on:
+            - task_key: prepare_data
+          compute:
+            hardware_accelerator: GPU_1xA10
+          timeout_seconds: ${var.gpu_timeout_seconds}
+          max_retries: 0  # a retry would re-run (and re-bill) every run in the plan
+          notebook_task:
+            notebook_path: ./notebooks/02_train_evaluate.py
+
+        - task_key: ingest_results
+          depends_on:
+            - task_key: train_evaluate
+          run_if: ALL_DONE  # keep whatever finished, even if the GPU task failed or timed out
+          notebook_task:
+            notebook_path: ./notebooks/03_ingest_results.py
+
+        - task_key: judge_audit
+          depends_on:
+            - task_key: ingest_results
+          notebook_task:
+            notebook_path: ./notebooks/04_judge_audit.py
+
+        - task_key: report
+          depends_on:
+            - task_key: judge_audit
+          run_if: ALL_DONE
+          notebook_task:
+            notebook_path: ./notebooks/05_report.py
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      schema: med_notes_dev
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

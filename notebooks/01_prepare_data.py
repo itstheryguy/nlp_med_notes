@@ -18,7 +18,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install -q datasets pyyaml
+# MAGIC %pip install -q huggingface_hub pyyaml
 
 # COMMAND ----------
 

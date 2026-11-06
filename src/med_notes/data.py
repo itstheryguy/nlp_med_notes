@@ -22,10 +22,17 @@ SPLIT_SEED = 2026
 
 
 def load_raw() -> pd.DataFrame:
-    """Rows exactly as the HF dataset returns them, plus a stable row-order `example_id`."""
-    from datasets import load_dataset
+    """Rows in the same order the HF `datasets` loader returns them, plus a stable row-order `example_id`.
 
-    df = load_dataset(DATASET_ID, split="train").to_pandas()
+    Reads the two CSVs directly (training set, then validation set) instead of using `datasets`, whose
+    pinned fsspec/huggingface_hub versions conflict with the serverless environment's.
+    """
+    from huggingface_hub import hf_hub_download, list_repo_files
+
+    csvs = sorted((f for f in list_repo_files(DATASET_ID, repo_type="dataset") if f.endswith(".csv")),
+                  key=lambda f: "Validation" in f)  # training set first, as the datasets loader orders them
+    df = pd.concat([pd.read_csv(hf_hub_download(DATASET_ID, f, repo_type="dataset")) for f in csvs],
+                   ignore_index=True)
     df.insert(0, "example_id", np.arange(len(df), dtype="int64"))
     df = df.rename(columns={"ID": "source_id"})
     df["source_split"] = np.where(df["example_id"] < OFFICIAL_TRAIN_ROWS, "official_train", "official_validation")

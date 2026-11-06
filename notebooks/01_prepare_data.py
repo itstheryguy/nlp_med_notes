@@ -106,7 +106,9 @@ plan = {
 }
 with open(f"{run_dir}/plan.json", "w") as f:
     json.dump(plan, f, indent=2)
-spark.table("silver_dialog_notes").toPandas().to_parquet(f"{run_dir}/splits.parquet")
+snapshot = spark.table("silver_dialog_notes").toPandas()
+snapshot.attrs = {}  # Spark Connect attaches query metrics here, which to_parquet can't serialize
+snapshot.to_parquet(f"{run_dir}/splits.parquet")
 
 est = sum(experiments[n].est_minutes for n in names)
 print(f"Plan: {len(names)} runs, estimated {est:.0f} GPU min (budget {plan['max_gpu_minutes']:.0f}) → {run_dir}")

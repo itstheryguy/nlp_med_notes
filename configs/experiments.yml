@@ -36,6 +36,10 @@ experiments:
   - name: pegasus_large
     model_name: google/pegasus-large
     learning_rate: 5.0e-5
+    # 96k-token vocabulary: batch 8 ran out of memory on the A10G (24 GB) building the output logits.
+    # Same effective batch (16), half the peak memory.
+    batch_size: 4
+    grad_accum: 4
     groups: [main, large]
     est_minutes: 12
 

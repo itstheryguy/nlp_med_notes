@@ -52,6 +52,8 @@ def training_job_request(*, name: str, image: str, role_arn: str, instance_type:
         "Environment": {
             "S3_ROOT": s3_root, "VOLUME_ROOT": volume_root, "RUN_REL": run_rel, "MODELS_REL": models_rel,
             "TOKENIZERS_PARALLELISM": "false", "HF_HUB_DISABLE_TELEMETRY": "1",
+            # Less fragmentation between runs and across varying sequence lengths in one session.
+            "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
         },
         "OutputDataConfig": {"S3OutputPath": f"{s3_root.rstrip('/')}/sagemaker-output/"},
         "ResourceConfig": {"InstanceType": instance_type, "InstanceCount": 1, "VolumeSizeInGB": 60},

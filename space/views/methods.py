@@ -64,7 +64,7 @@ for m in ("precision", "recall"):
             x=alt.X("value:Q", scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format=".0%", tickCount=5), title=None),
             color=alt.Color("c:N", scale=None), tooltip=[alt.Tooltip("model:N"), alt.Tooltip("value:Q", format=".0%")]),
         base.mark_text(align="left", dx=4, fontSize=11, color=ink["primary"]).encode(x="value:Q", text=alt.Text("value:Q", format=".0%")),
-    ).properties(title=f"Grounding flag {m} vs the judge", height=110))
+    ).properties(title=f"Grounding flag {m} vs the judge", height=34 * len(sub) + 30))
 cols = st.columns(2, gap="large")
 for col, panel in zip(cols, panels):
     col.altair_chart(chart_config(panel), width="stretch", theme=None)
@@ -111,7 +111,14 @@ if judges.get("secondary"):
                   help=f"Faithful/not on {co['n']} model notes. Cohen's kappa {co['kappa']:.2f} "
                        f"({kappa_words(co['kappa'])} agreement beyond chance).")
 
+    if co.get("kappa") is not None:
+        st.caption(f"Cohen's kappa between the judges: {co['kappa']:.2f}, {kappa_words(co['kappa'])} agreement beyond "
+                   "chance. Raw agreement looks higher because most notes are judged not faithful, so two judges "
+                   "would often agree by chance; kappa removes that.")
+
     by = pd.DataFrame(judges.get("cross_by_family", []))
+    if len(by):  # same row order as the rest of the site
+        by = by.set_index("family").loc[[f for f in summary["family_order"] if f in set(by["family"])]].reset_index()
     ref = judges.get("cross_reference") or {}
     if len(by):
         rows = by[["family", "primary_faithful", "secondary_faithful"]].copy()

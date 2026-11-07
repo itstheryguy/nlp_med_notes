@@ -4,13 +4,78 @@
   "job_run_ids": [
     "798436332793106"
   ],
-  "code_version": "results-v1",
+  "code_version": "results-v1.1",
   "judge_endpoints": [
-    "databricks-gpt-oss-120b"
+    "databricks-gpt-oss-120b",
+    "databricks-qwen3-next-80b-a3b-instruct"
   ],
-  "judge_prompt_version": "v1",
+  "judge_prompt_version": "v2",
   "dataset": "har1/MTS_Dialogue-Clinical_Note (MTS-Dialog, CC BY 4.0)",
-  "exported_at": "2026-11-07T20:01:11.248981+00:00",
+  "judges": {
+    "primary": "databricks-gpt-oss-120b",
+    "secondary": "databricks-qwen3-next-80b-a3b-instruct",
+    "cross_overall": {
+      "n": 480,
+      "agreement": 0.8791666666666667,
+      "kappa": 0.5515463917525771
+    },
+    "cross_by_family": [
+      {
+        "family": "biobart",
+        "n": 120,
+        "agreement": 0.9083333333333333,
+        "kappa": 0.5410292072322673,
+        "primary_faithful": 0.11666666666666667,
+        "secondary_faithful": 0.10833333333333334
+      },
+      {
+        "family": "biobart_large",
+        "n": 120,
+        "agreement": 0.875,
+        "kappa": 0.5592556317335946,
+        "primary_faithful": 0.15833333333333333,
+        "secondary_faithful": 0.18333333333333332
+      },
+      {
+        "family": "pegasus_large",
+        "n": 120,
+        "agreement": 0.9083333333333333,
+        "kappa": 0.6325167037861915,
+        "primary_faithful": 0.15833333333333333,
+        "secondary_faithful": 0.13333333333333333
+      },
+      {
+        "family": "t5_base",
+        "n": 120,
+        "agreement": 0.825,
+        "kappa": 0.4784768211920529,
+        "primary_faithful": 0.23333333333333334,
+        "secondary_faithful": 0.19166666666666668
+      }
+    ],
+    "cross_reference": {
+      "n": 40,
+      "agreement": 0.875,
+      "kappa": 0.6774193548387097,
+      "primary_faithful": 0.75,
+      "secondary_faithful": 0.725
+    },
+    "self_consistency": [
+      {
+        "endpoint": "databricks-gpt-oss-120b",
+        "n": 40,
+        "faithful_agreement": 0.95,
+        "score_agreement": 0.7
+      },
+      {
+        "endpoint": "databricks-qwen3-next-80b-a3b-instruct",
+        "n": 40,
+        "faithful_agreement": 0.9,
+        "score_agreement": 0.85
+      }
+    ]
+  },
+  "exported_at": "2026-11-07T21:45:26.187009+00:00",
   "n_test_examples": 132,
   "n_audit_examples": 40,
   "families": [
@@ -32,18 +97,18 @@
       "grounding_flag_rate_sd": 0.015151515151515152,
       "filled_na_rate": 0.11363636363636365,
       "filled_na_rate_sd": 0.007575757575757576,
-      "faithful_rate": 0.3583333333333334,
-      "faithful_rate_sd": 0.07216878364870323,
-      "hallucination_rate": 0.34166666666666673,
-      "hallucination_rate_sd": 0.07637626158259732,
-      "major_errors_per_note": 0.3,
-      "major_errors_per_note_sd": 0.024999999999999994,
-      "major_omissions_per_note": 1.3416666666666668,
-      "major_omissions_per_note_sd": 0.13768926368215262,
-      "misplaced_per_note": 0.25833333333333336,
-      "misplaced_per_note_sd": 0.11273124382057235,
-      "judge_score": 2.3583333333333334,
-      "judge_score_sd": 0.028867513459481187,
+      "faithful_rate": 0.11666666666666665,
+      "faithful_rate_sd": 0.02886751345948128,
+      "hallucination_rate": 0.31666666666666665,
+      "hallucination_rate_sd": 0.05204164998665331,
+      "major_errors_per_note": 0.4666666666666666,
+      "major_errors_per_note_sd": 0.11273124382057234,
+      "major_omissions_per_note": 2.1666666666666665,
+      "major_omissions_per_note_sd": 0.1664582029619849,
+      "misplaced_per_note": 0.2916666666666667,
+      "misplaced_per_note_sd": 0.16645820296198482,
+      "judge_score": 2.3000000000000003,
+      "judge_score_sd": 0.050000000000000044,
       "minutes": 2.5500000000000003,
       "minutes_sd": 0.4156921938165304,
       "best_epoch": 5.0,
@@ -71,18 +136,18 @@
       "grounding_flag_rate_sd": 0.03154039393130503,
       "filled_na_rate": 0.12121212121212122,
       "filled_na_rate_sd": 0.020043570538368107,
-      "faithful_rate": 0.375,
-      "faithful_rate_sd": 0.04999999999999999,
-      "hallucination_rate": 0.3333333333333333,
-      "hallucination_rate_sd": 0.0520416499866533,
-      "major_errors_per_note": 0.3166666666666667,
-      "major_errors_per_note_sd": 0.05204164998665331,
-      "major_omissions_per_note": 1.1083333333333332,
-      "major_omissions_per_note_sd": 0.052041649986653254,
+      "faithful_rate": 0.15833333333333333,
+      "faithful_rate_sd": 0.06291528696058958,
+      "hallucination_rate": 0.31666666666666665,
+      "hallucination_rate_sd": 0.08036375634160796,
+      "major_errors_per_note": 0.2583333333333333,
+      "major_errors_per_note_sd": 0.08036375634160794,
+      "major_omissions_per_note": 1.625,
+      "major_omissions_per_note_sd": 0.15206906325745553,
       "misplaced_per_note": 0.225,
-      "misplaced_per_note_sd": 0.024999999999999994,
-      "judge_score": 2.65,
-      "judge_score_sd": 0.09013878188659984,
+      "misplaced_per_note_sd": 0.11456439237389601,
+      "judge_score": 2.5666666666666664,
+      "judge_score_sd": 0.19094065395649332,
       "minutes": 4.613333333333333,
       "minutes_sd": 0.17953644012660294,
       "best_epoch": 4.0,
@@ -110,18 +175,18 @@
       "grounding_flag_rate_sd": 0.007575757575757576,
       "filled_na_rate": 0.09343434343434344,
       "filled_na_rate_sd": 0.011572160845848084,
-      "faithful_rate": 0.45,
-      "faithful_rate_sd": 0.043301270189221905,
-      "hallucination_rate": 0.2916666666666667,
-      "hallucination_rate_sd": 0.0520416499866533,
-      "major_errors_per_note": 0.20833333333333334,
-      "major_errors_per_note_sd": 0.08036375634160796,
-      "major_omissions_per_note": 1.0250000000000001,
-      "major_omissions_per_note_sd": 0.08660254037844381,
-      "misplaced_per_note": 0.2333333333333333,
-      "misplaced_per_note_sd": 0.14433756729740646,
-      "judge_score": 2.4833333333333334,
-      "judge_score_sd": 0.06291528696058957,
+      "faithful_rate": 0.15833333333333335,
+      "faithful_rate_sd": 0.05204164998665332,
+      "hallucination_rate": 0.25,
+      "hallucination_rate_sd": 0.04999999999999999,
+      "major_errors_per_note": 0.19999999999999998,
+      "major_errors_per_note_sd": 0.04330127018922194,
+      "major_omissions_per_note": 2.0083333333333333,
+      "major_omissions_per_note_sd": 0.1376892636821525,
+      "misplaced_per_note": 0.15,
+      "misplaced_per_note_sd": 0.08660254037844387,
+      "judge_score": 2.483333333333333,
+      "judge_score_sd": 0.05204164998665338,
       "minutes": 15.803333333333333,
       "minutes_sd": 0.6560741827974433,
       "best_epoch": 15.666666666666666,
@@ -149,18 +214,18 @@
       "grounding_flag_rate_sd": 0.013121597027036955,
       "filled_na_rate": 0.12121212121212122,
       "filled_na_rate_sd": 0.007575757575757576,
-      "faithful_rate": 0.4083333333333334,
-      "faithful_rate_sd": 0.08036375634160797,
-      "hallucination_rate": 0.2583333333333333,
-      "hallucination_rate_sd": 0.05204164998665331,
-      "major_errors_per_note": 0.16666666666666666,
-      "major_errors_per_note_sd": 0.13768926368215256,
-      "major_omissions_per_note": 1.1666666666666667,
-      "major_omissions_per_note_sd": 0.24281337140555775,
-      "misplaced_per_note": 0.35833333333333334,
-      "misplaced_per_note_sd": 0.1773649721149397,
-      "judge_score": 2.741666666666667,
-      "judge_score_sd": 0.3105774192264038,
+      "faithful_rate": 0.2333333333333333,
+      "faithful_rate_sd": 0.05204164998665333,
+      "hallucination_rate": 0.225,
+      "hallucination_rate_sd": 0.05000000000000002,
+      "major_errors_per_note": 0.23333333333333336,
+      "major_errors_per_note_sd": 0.2753785273643051,
+      "major_omissions_per_note": 1.7833333333333332,
+      "major_omissions_per_note_sd": 0.1941863366288507,
+      "misplaced_per_note": 0.40833333333333327,
+      "misplaced_per_note_sd": 0.3642915499065732,
+      "judge_score": 2.65,
+      "judge_score_sd": 0.12990381056766587,
       "minutes": 4.086666666666666,
       "minutes_sd": 0.02516611478423618,
       "best_epoch": 4.0,
@@ -174,42 +239,42 @@
   "reference": {
     "template_rate": 0.8939393939393939,
     "grounding_flag_rate": 0.4772727272727273,
-    "faithful_rate": 0.825,
-    "hallucination_rate": 0.275,
-    "judge_score": 4.075
+    "faithful_rate": 0.75,
+    "hallucination_rate": 0.3,
+    "judge_score": 3.925
   },
   "calibration": [
     {
       "family": "biobart",
       "judged": 120,
       "flag_rate": 0.2,
-      "judge_hallucination_rate": 0.3416666666666667,
+      "judge_hallucination_rate": 0.31666666666666665,
       "precision": 0.875,
-      "recall": 0.5121951219512195
+      "recall": 0.5526315789473685
     },
     {
       "family": "biobart_large",
       "judged": 120,
       "flag_rate": 0.15833333333333333,
-      "judge_hallucination_rate": 0.3333333333333333,
-      "precision": 0.8421052631578947,
-      "recall": 0.4
+      "judge_hallucination_rate": 0.31666666666666665,
+      "precision": 0.7894736842105263,
+      "recall": 0.39473684210526316
     },
     {
       "family": "pegasus_large",
       "judged": 120,
       "flag_rate": 0.2,
-      "judge_hallucination_rate": 0.2916666666666667,
-      "precision": 0.8333333333333334,
-      "recall": 0.5714285714285714
+      "judge_hallucination_rate": 0.25,
+      "precision": 0.7916666666666666,
+      "recall": 0.6333333333333333
     },
     {
       "family": "t5_base",
       "judged": 120,
       "flag_rate": 0.15833333333333333,
-      "judge_hallucination_rate": 0.25833333333333336,
+      "judge_hallucination_rate": 0.225,
       "precision": 0.6842105263157895,
-      "recall": 0.41935483870967744
+      "recall": 0.48148148148148145
     }
   ],
   "training_cost": {

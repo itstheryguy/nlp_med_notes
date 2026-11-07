@@ -113,7 +113,8 @@ for t in TRAPS:
     if t["key"] in ref_rates:
         r = pd.DataFrame({"x": [ref_rates[t["key"]]]})
         layers.append(alt.Chart(r).mark_rule(color=ink["reference"], strokeWidth=1.5).encode(x="x:Q"))
-    panels.append(alt.layer(*layers).properties(title=f"{t['title']} ({t['source']})", height=120))
+    panels.append(alt.layer(*layers).properties(title=f"{t['title']} ({t['source']})",
+                                                height=30 * sub["model"].nunique() + 30))
 grid = st.columns(2, gap="large")
 for i, panel in enumerate(panels):
     grid[i % 2].altair_chart(chart_config(panel), width="stretch", theme=None)

@@ -26,6 +26,9 @@ from med_notes.ingest import load_run_dir, reference_tier1  # noqa: E402
 from med_notes.judge import Judge, _text_from_content, parse_verdict, results_frame, summarize_verdict  # noqa: E402
 from med_notes.remote import LocalStore, run_remote  # noqa: E402
 from med_notes.runner import run_plan  # noqa: E402
+from med_notes.judge import canonical_note, score_from_labels, verdict_key  # noqa: E402
+from med_notes.judging import agreement, assemble, build_items, cohen_kappa, plan_calls  # noqa: E402
+from med_notes.export import build_snapshot  # noqa: E402
 from med_notes.sagemaker_job import build_sourcedir, job_name, summarize_job, training_job_request  # noqa: E402
 
 
@@ -195,6 +198,70 @@ def check_remote(exps, silver):
     print("remote ok: resume skips finished runs, per-run upload, model path mapping, tarball, job request, cost")
 
 
+def check_judging():
+    # #346: the same all-N/A note, one-line (T5/PEGASUS) vs multi-line (BioBART), must look identical to the judge.
+    one = "Symptoms: N/A Diagnosis: N/A History of Patient: N/A Plan of Action: N/A"
+    multi = "Symptoms: N/A\nDiagnosis: N/A\nHistory of Patient:  N/A\nPlan of Action: N/A"
+    assert canonical_note(one) == canonical_note(multi)
+    assert verdict_key(346, canonical_note(one), "j") == verdict_key(346, canonical_note(multi), "j")
+    assert verdict_key(346, canonical_note(one), "j") != verdict_key(346, canonical_note(one), "j", "v1")
+    assert [score_from_labels(m, n) for m, n in [(0, 0), (0, 3), (1, 0), (2, 0), (4, 0)]] == [5, 4, 3, 2, 1]
+    v = parse_verdict('{"claims": [{"field": "History of Patient", "claim": "No history to report (N/A)", '
+                      '"label": "contradicted", "severity": "major"}], '
+                      '"omissions": [{"fact": "denies HTN, DM, CAD, cancer", "severity": "major"}], "rationale": "x"}')
+    s = summarize_verdict(v)
+    assert v["claims"] == [] and s["faithfulness_score"] == 3 and s["faithful"] is False and s["hallucinated"] is False
+
+    sample = pd.DataFrame({"example_id": [1, 2], "section_header": ["PMH", "CC"], "dialogue": ["d1", "d2"],
+                           "reference": ["Symptoms: a\nDiagnosis: N/A\nHistory of Patient: N/A\nPlan of Action: N/A", "r2"]})
+    model_notes = pd.DataFrame({"experiment": ["m_s1", "m_s2", "n_s1"], "family": ["m", "m", "n"], "seed": [1, 2, 1],
+                                "example_id": [1, 1, 1], "note": [one, multi, "other"], "grounding_flag": [False, False, True]})
+    items = build_items(sample, model_notes)
+    assert len(items) == 5  # 2 references + 3 notes for audited example 1
+    keyed, calls = plan_calls(items, ["j1", "j2"], cached_keys=set())
+    assert len(keyed) == 10 and len(calls) == 8  # the two identical notes share one call per judge
+    cached_key = calls["verdict_key"].iloc[0]
+    _, calls2 = plan_calls(items, ["j1", "j2"], cached_keys={cached_key})
+    assert len(calls2) == 7 and cached_key not in set(calls2["verdict_key"])
+    verdicts = calls.assign(faithful=True, hallucinated=False, faithfulness_score=5.0, verdict_json="{}", error=None,
+                            **{c: 0.0 for c in ["n_claims", "n_supported", "n_unsupported", "n_contradicted", "n_misplaced",
+                                                "n_major_errors", "n_omissions", "n_major_omissions", "attempts",
+                                                "prompt_tokens", "completion_tokens"]})
+    out = assemble(keyed, verdicts, new_keys=set(calls["verdict_key"]) - {cached_key})
+    assert out["faithful"].notna().all() and out["cached"].sum() == 1
+    a, b = pd.Series([True, True, False, False]), pd.Series([True, False, False, False])
+    assert agreement(a, b)["agreement"] == 0.75 and abs(cohen_kappa(a, b) - 0.5) < 1e-9
+    print("judging ok: canonical notes, computed score, N/A rule, cache plan (dedupe + reuse), kappa")
+
+
+def check_export_two_judges(silver):
+    test_ids = get_split(silver, "test")["example_id"].head(4).tolist()
+    preds = pd.DataFrame([{"experiment": f"m_s{s}", "family": "m", "seed": s, "split": "test", "example_id": e,
+                           "prediction": "Symptoms: x\nDiagnosis: N/A\nHistory of Patient: N/A\nPlan of Action: N/A",
+                           "rougeL": .5, "bertscore_f1": .9, "template_ok": True, "na_agreement": 1.0,
+                           "unsupported_terms": [], "unsupported_numbers": 0, "grounding_flag": False,
+                           "empty_prediction": False} for s in (1, 2) for e in test_ids])
+    def judge_df(faithful):
+        rows = [{"experiment": e, "example_id": x, "faithful": f, "hallucinated": False, "n_claims": 1, "n_unsupported": 0,
+                 "n_contradicted": 0, "n_misplaced": 0, "n_major_errors": 0, "n_major_omissions": 0 if f else 1,
+                 "faithfulness_score": 5 if f else 3, "verdict_json": '{"claims": [], "omissions": []}'}
+                for e in ["m_s1", "m_s2", "reference"] for x, f in zip(test_ids, faithful)]
+        return pd.DataFrame(rows)
+    runs = pd.DataFrame({"experiment": ["m_s1", "m_s2"], "minutes": [1.0, 1.0], "best_epoch": [3, 3], "epochs_run": [5, 5],
+                         "num_params_m": [100.0, 100.0], "model_name": ["m", "m"]})
+    cons = pd.DataFrame({"endpoint": ["j1", "j1"], "faithful": [True, False], "faithful_repeat": [True, True],
+                         "faithfulness_score": [5, 3], "score_repeat": [5, 5]})
+    snap = build_snapshot(silver=silver, audit=pd.DataFrame({"example_id": test_ids, "audit_rank": range(4)}),
+                          predictions=preds, judge=judge_df([True, True, False, False]),
+                          judge2=judge_df([True, False, False, False]), consistency=cons,
+                          reference_checks=reference_tier1(silver), runs=runs, training_jobs=None, meta={},
+                          judge_names={"primary": "j1", "secondary": "j2"})
+    j = snap["summary"]["judges"]
+    assert j["cross_overall"]["agreement"] == 0.75 and j["self_consistency"][0]["faithful_agreement"] == 0.5
+    assert "j2_faithful" in snap["notes"] and "ref_j2_faithful" in snap["examples"]
+    print("export ok: second judge columns, cross-judge and self-consistency summaries")
+
+
 if __name__ == "__main__":
     exps = check_configs()
     silver = check_data()
@@ -202,4 +269,6 @@ if __name__ == "__main__":
     check_judge()
     check_runner_and_ingest(exps, silver)
     check_remote(exps, silver)
+    check_judging()
+    check_export_two_judges(silver)
     print("SMOKE TEST PASSED")

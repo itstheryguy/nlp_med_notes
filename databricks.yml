@@ -65,12 +65,16 @@ resources:
         # Optional budget guard: skips (never interrupts) runs that would pass this many minutes. 0 = off.
         - name: max_train_minutes
           default: "0"
-        - name: judge_endpoint
-          default: databricks-gpt-oss-120b
+        # LLM judges, comma-separated; the first is primary. Both are open-weight models served in Databricks.
+        - name: judge_endpoints
+          default: databricks-gpt-oss-120b,databricks-qwen3-next-80b-a3b-instruct
         - name: judge_sample_size
           default: "10"
         - name: judge_max_calls
-          default: "600"
+          default: "2000"
+        # Keys re-judged per judge (cache bypassed) to measure self-consistency. 0 = skip.
+        - name: consistency_sample
+          default: "40"
         # Hourly rate for the report's quick cost estimate; 0 skips it (billed cost is shown regardless).
         - name: train_usd_per_hour
           default: "0"
@@ -165,6 +169,8 @@ resources:
           default: ""
         - name: code_version
           default: ""
+        - name: judge_endpoints
+          default: databricks-gpt-oss-120b,databricks-qwen3-next-80b-a3b-instruct
       tasks:
         - task_key: export
           notebook_task:

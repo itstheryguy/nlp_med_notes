@@ -13,11 +13,13 @@ import numpy as np
 import pandas as pd
 
 from .audit import FIELDS, is_na, parse_template
+from .judging import agreement
 
 NOTE_COLS = ["experiment", "family", "seed", "example_id", "prediction", "rougeL", "bertscore_f1", "template_ok",
              "na_agreement", "unsupported_terms", "unsupported_numbers", "grounding_flag", "empty_prediction"]
 JUDGE_COLS = ["faithful", "hallucinated", "n_claims", "n_unsupported", "n_contradicted", "n_misplaced",
               "n_major_errors", "n_major_omissions", "faithfulness_score", "verdict_json"]
+J2_COLS = ["faithful", "hallucinated", "n_major_errors", "n_major_omissions", "faithfulness_score", "verdict_json"]
 
 
 def field_diff(note: str, reference: str) -> dict:
@@ -32,8 +34,12 @@ def field_diff(note: str, reference: str) -> dict:
 
 def build_snapshot(silver: pd.DataFrame, audit: pd.DataFrame, predictions: pd.DataFrame, judge: pd.DataFrame,
                    reference_checks: pd.DataFrame, runs: pd.DataFrame, training_jobs: pd.DataFrame,
-                   meta: dict) -> dict[str, pd.DataFrame | dict]:
-    """Inputs are the Delta tables (already filtered to the job runs being published). Test split only."""
+                   meta: dict, judge2: pd.DataFrame | None = None, consistency: pd.DataFrame | None = None,
+                   judge_names: dict | None = None) -> dict[str, pd.DataFrame | dict]:
+    """Inputs are the Delta tables (already filtered to the job runs being published). Test split only.
+
+    judge: the primary judge's rows; judge2: the second judge's (optional, columns prefixed j2_ in the output);
+    consistency: judge_consistency rows (self-agreement on deliberate re-judges)."""
     training_jobs = training_jobs if training_jobs is not None else pd.DataFrame()
     test = silver[silver["split"] == "test"][["example_id", "section_header", "dialogue", "section_text"]]
     test = test.rename(columns={"section_text": "reference"})
@@ -46,10 +52,17 @@ def build_snapshot(silver: pd.DataFrame, audit: pd.DataFrame, predictions: pd.Da
                     .merge(ref_judge[["example_id", *JUDGE_COLS]].rename(columns=lambda c: c if c == "example_id" else f"ref_{c}"),
                            on="example_id", how="left"))
     examples["ref_fields_json"] = [json.dumps(p) if (p := parse_template(t)) else None for t in examples["reference"]]
+    if judge2 is not None and len(judge2):
+        r2 = judge2[judge2["experiment"] == "reference"].drop_duplicates("example_id", keep="last")
+        examples = examples.merge(r2[["example_id", *J2_COLS]].rename(
+            columns=lambda c: c if c == "example_id" else f"ref_j2_{c}"), on="example_id", how="left")
 
     notes = predictions[predictions["split"] == "test"][NOTE_COLS].merge(
         judge[judge["experiment"] != "reference"][["experiment", "example_id", *JUDGE_COLS]],
         on=["experiment", "example_id"], how="left")
+    if judge2 is not None and len(judge2):
+        notes = notes.merge(judge2[judge2["experiment"] != "reference"][["experiment", "example_id", *J2_COLS]].rename(
+            columns=lambda c: c if c in ("experiment", "example_id") else f"j2_{c}"), on=["experiment", "example_id"], how="left")
     refs = examples.set_index("example_id")["reference"]
     diffs = pd.DataFrame([field_diff(n, refs.get(e, "")) for n, e in zip(notes["prediction"], notes["example_id"])])
     notes = pd.concat([notes.reset_index(drop=True), diffs], axis=1)
@@ -89,8 +102,30 @@ def build_snapshot(silver: pd.DataFrame, audit: pd.DataFrame, predictions: pd.Da
                       "precision": float((flag & hal).sum() / flag.sum()) if flag.sum() else None,
                       "recall": float((flag & hal).sum() / hal.sum()) if hal.sum() else None})
 
+    judges = None
+    if judge2 is not None and len(judge2) and "j2_faithful" in notes:
+        both = notes[notes["faithful"].notna() & notes["j2_faithful"].notna()]
+        rboth = examples[examples["ref_faithful"].notna() & examples.get("ref_j2_faithful", pd.Series(dtype=object)).notna()]
+        by_family = [{"family": f, **agreement(g["faithful"], g["j2_faithful"]),
+                      "primary_faithful": float(g["faithful"].astype(bool).mean()),
+                      "secondary_faithful": float(g["j2_faithful"].astype(bool).mean())} for f, g in both.groupby("family")]
+        judges = {
+            **(judge_names or {}),
+            "cross_overall": agreement(both["faithful"], both["j2_faithful"]),
+            "cross_by_family": by_family,
+            "cross_reference": {**agreement(rboth["ref_faithful"], rboth["ref_j2_faithful"]),
+                                "primary_faithful": float(rboth["ref_faithful"].astype(bool).mean()) if len(rboth) else None,
+                                "secondary_faithful": float(rboth["ref_j2_faithful"].astype(bool).mean()) if len(rboth) else None},
+            "self_consistency": [
+                {"endpoint": e, "n": int(len(g)),
+                 "faithful_agreement": float((g["faithful"].astype(bool) == g["faithful_repeat"].astype(bool)).mean()),
+                 "score_agreement": float((g["faithfulness_score"] == g["score_repeat"]).mean())}
+                for e, g in (consistency.groupby("endpoint") if consistency is not None and len(consistency) else [])],
+        }
+
     summary = {
         **meta,
+        "judges": judges,
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "n_test_examples": int(len(examples)), "n_audit_examples": int(examples["in_audit"].sum()),
         "families": families,

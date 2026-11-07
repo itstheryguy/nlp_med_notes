@@ -24,6 +24,13 @@ if not spark.catalog.tableExists("runs"):
 job_run_id = dbutils.widgets.get("job_run_id") or spark.sql(
     "SELECT job_run_id FROM runs ORDER BY ingested_at DESC LIMIT 1").first()[0]
 has_judge = spark.catalog.tableExists("judge_results")
+dbutils.widgets.text("judge_endpoints", "databricks-gpt-oss-120b,databricks-qwen3-next-80b-a3b-instruct", "Judges (first = primary)")
+primary = dbutils.widgets.get("judge_endpoints").split(",")[0].strip()
+import sys, os
+sys.path.insert(0, os.path.abspath("../src"))
+from med_notes.judge import PROMPT_VERSION
+jfilter = f"endpoint = '{primary}' AND prompt_version = '{PROMPT_VERSION}'"  # one judge, current prompt
+print(f"Judge metrics from {primary}, prompt {PROMPT_VERSION}")
 print(f"Report for job run {job_run_id}")
 
 # COMMAND ----------
@@ -38,7 +45,7 @@ judge_cte = f"""
   judged AS (
     SELECT experiment, avg(CAST(faithful AS INT)) AS faithful_rate, avg(CAST(hallucinated AS INT)) AS hallucination_rate,
            avg(n_major_errors) AS major_errors_per_note, avg(faithfulness_score) AS judge_score
-    FROM judge_results WHERE error IS NULL AND (job_run_id = '{job_run_id}' OR experiment = 'reference')
+    FROM judge_results WHERE error IS NULL AND job_run_id = '{job_run_id}' AND {jfilter}
     GROUP BY experiment)""" if has_judge else """
   judged AS (SELECT CAST(NULL AS STRING) AS experiment, CAST(NULL AS DOUBLE) AS faithful_rate,
              CAST(NULL AS DOUBLE) AS hallucination_rate, CAST(NULL AS DOUBLE) AS major_errors_per_note,
@@ -95,7 +102,7 @@ if has_judge:
                round(count_if(grounding_flag AND hallucinated) / nullif(count_if(grounding_flag), 0), 3) AS flag_precision,
                round(count_if(grounding_flag AND hallucinated) / nullif(count_if(hallucinated), 0), 3) AS flag_recall
         FROM judge_results
-        WHERE job_run_id = '{job_run_id}' AND experiment != 'reference' AND error IS NULL
+        WHERE job_run_id = '{job_run_id}' AND experiment != 'reference' AND error IS NULL AND {jfilter}
     """))
 
 # COMMAND ----------
@@ -164,7 +171,7 @@ src = spark.sql(f"SELECT section_header, dialogue, section_text FROM silver_dial
 print(f"example_id {example_id} · {src.section_header}\n\nDIALOGUE\n{src.dialogue}\n\nREFERENCE\n{src.section_text}")
 
 judge_join = (f"LEFT JOIN judge_results j ON j.job_run_id = p.job_run_id AND j.experiment = p.experiment "
-              f"AND j.example_id = p.example_id") if has_judge else ""
+              f"AND j.example_id = p.example_id AND j.{jfilter}") if has_judge else ""
 judge_cols = ", j.faithful, j.faithfulness_score, j.verdict_json" if has_judge else ""
 display(spark.sql(f"""
     SELECT p.experiment, p.prediction, p.template_ok, p.unsupported_terms {judge_cols}

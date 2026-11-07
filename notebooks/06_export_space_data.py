@@ -39,6 +39,8 @@ dbutils.widgets.text("schema", "med_notes", "Schema")
 dbutils.widgets.text("job_run_ids", "", "Job run IDs to publish (comma-separated)")
 dbutils.widgets.text("export_id", "", "Export ID (blank = timestamp)")
 dbutils.widgets.text("code_version", "", "Git tag/commit the runs came from (shown in the Space)")
+dbutils.widgets.text("judge_endpoints", "databricks-gpt-oss-120b,databricks-qwen3-next-80b-a3b-instruct",
+                     "Judges (first = primary; second shown alongside)")
 catalog, schema = dbutils.widgets.get("catalog"), dbutils.widgets.get("schema")
 spark.sql(f"USE {catalog}.{schema}")
 ids = [i.strip() for i in dbutils.widgets.get("job_run_ids").split(",") if i.strip()]
@@ -60,18 +62,27 @@ from med_notes.judge import PROMPT_VERSION
 runs = table(f"SELECT * FROM runs WHERE job_run_id IN ({id_list}) AND status = 'succeeded'")
 dupes = runs["experiment"].duplicated()
 assert not dupes.any(), f"Same experiment in several job runs: {runs.loc[dupes, 'experiment'].tolist()}"
-endpoints = table(f"SELECT DISTINCT endpoint FROM judge_results WHERE job_run_id IN ({id_list})")["endpoint"].tolist()
+judge_list = [e.strip() for e in dbutils.widgets.get("judge_endpoints").split(",") if e.strip()]
+primary, secondary = judge_list[0], (judge_list[1] if len(judge_list) > 1 else None)
 
+def judge_rows(endpoint: str):
+    return table(f"SELECT * FROM judge_results WHERE job_run_id IN ({id_list}) AND endpoint = '{endpoint}' "
+                 f"AND error IS NULL AND prompt_version = '{PROMPT_VERSION}'")
+
+consistency = (table(f"SELECT * FROM judge_consistency WHERE job_run_id IN ({id_list}) AND prompt_version = '{PROMPT_VERSION}'")
+               if spark.catalog.tableExists("judge_consistency") else None)
 snap = build_snapshot(
     silver=table("SELECT * FROM silver_dialog_notes"),
     audit=table("SELECT * FROM audit_sample"),
     predictions=table(f"SELECT * FROM predictions WHERE job_run_id IN ({id_list})"),
-    judge=table(f"SELECT * FROM judge_results WHERE (job_run_id IN ({id_list}) OR experiment = 'reference') "
-                f"AND error IS NULL AND prompt_version = '{PROMPT_VERSION}'"),
+    judge=judge_rows(primary),
+    judge2=judge_rows(secondary) if secondary else None,
+    consistency=consistency,
+    judge_names={"primary": primary, "secondary": secondary},
     reference_checks=table("SELECT * FROM reference_checks"),
     runs=runs,
     training_jobs=table(f"SELECT * FROM training_jobs WHERE job_run_id IN ({id_list})") if spark.catalog.tableExists("training_jobs") else None,
-    meta={"catalog": catalog, "schema": schema, "job_run_ids": ids, "code_version": dbutils.widgets.get("code_version"), "judge_endpoints": endpoints,
+    meta={"catalog": catalog, "schema": schema, "job_run_ids": ids, "code_version": dbutils.widgets.get("code_version"), "judge_endpoints": [e for e in (primary, secondary) if e],
           "judge_prompt_version": PROMPT_VERSION, "dataset": "har1/MTS_Dialogue-Clinical_Note (MTS-Dialog, CC BY 4.0)"},
 )
 

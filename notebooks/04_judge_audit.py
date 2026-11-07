@@ -62,8 +62,11 @@ if spark.catalog.tableExists("judge_results"):
         SELECT example_id FROM judge_results
         WHERE experiment = 'reference' AND endpoint = '{endpoint}' AND prompt_version = '{PROMPT_VERSION}'
     """).collect()}
-ref_items = sample[~sample["example_id"].isin(already)].assign(
-    experiment="reference", family="reference", seed=0, note=sample["reference"], grounding_flag=None)
+# Filter first, then take `note` from the filtered frame: assigning a Series from the unfiltered frame onto
+# an empty one makes pandas expand it to that Series' rows (phantom references with NaN columns).
+ref_items = sample[~sample["example_id"].isin(already)]
+ref_items = ref_items.assign(experiment="reference", family="reference", seed=0, note=ref_items["reference"],
+                             grounding_flag=None)
 
 items = pd.concat([ref_items, model_items], ignore_index=True)
 if len(items) > max_calls:

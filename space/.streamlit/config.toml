@@ -1,0 +1,14 @@
+[client]
+toolbarMode = "viewer"
+
+[browser]
+gatherUsageStats = false
+
+# Separate light and dark themes keep the viewer's system setting working (a bare [theme] section
+# would force a light-based custom theme). The accent is a neutral violet: no model's series color,
+# and not red, which reads as an error.
+[theme.light]
+primaryColor = "#6250d6"
+
+[theme.dark]
+primaryColor = "#9085e9"

@@ -4,7 +4,7 @@ Fine-tunes three seq2seq models to turn a doctor-patient conversation from [MTS-
 
 It began as an MSDS 453 class project in Google Colab ([`nlp final project/previous work/`](nlp%20final%20project/previous%20work/)). That work compared ten single-run hyperparameter tweaks by ROUGE. The tweaks moved the metrics less than run-to-run noise, and the real failures (wrong medication placement, symptoms escalated into diagnoses) only appeared in manual review. This version is built around those two lessons: **repeat runs instead of tweaks, and measure faithfulness directly.**
 
-**Roadmap:** ✅ Databricks pipeline → ▶️ first full run (3 models × 3 seeds) → Hugging Face Space
+**Roadmap:** ✅ Databricks pipeline → ✅ first full run (3 models × 3 seeds) → ▶️ Hugging Face Space (`space/`) → prod run + publish
 
 ## Design
 
@@ -104,6 +104,20 @@ The pilot's `runs.minutes` and the billed cost in `05_report` replace the cost e
 python3 -m venv .venv && source .venv/bin/activate
 pip install torch transformers datasets accelerate rouge_score bert_score sentencepiece pyyaml pandas pyarrow databricks-sdk
 python tests/smoke_test.py
+```
+
+## Hugging Face Space (`space/`)
+
+A Streamlit app with an overview, a note explorer, a "model traps" page and the methods. It reads a **static
+snapshot**, not Databricks: the public Space holds no credentials and keeps working after the workspace is gone.
+
+```bash
+# 1. Export a snapshot of chosen job runs (prod for the published version)
+databricks bundle run -t dev export_space --params job_run_ids=<run1>,<run2>,export_id=<name>
+# 2. Pull it into the Space folder
+databricks fs cp -r --overwrite dbfs:/Volumes/workspace/med_notes_dev/pipeline/space_export/<name> space/data
+# 3. Test headless, then run locally
+cd space && python test_app.py && streamlit run app.py
 ```
 
 ## Layout

@@ -19,3 +19,6 @@ tests/output/
 
 # Original class notebook and report (kept locally for reference)
 nlp final project/
+
+# Space build artifacts
+space/__pycache__/

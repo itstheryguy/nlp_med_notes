@@ -9,3 +9,6 @@ bert_score
 pyyaml
 pyarrow
 mlflow-skinny
+# PEGASUS ships only a SentencePiece model; current transformers converts it at load time, which needs a
+# protobuf runtime at least as new as sentencepiece's generated code (older runtimes fail the conversion).
+protobuf>=7

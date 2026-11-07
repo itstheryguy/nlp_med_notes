@@ -32,7 +32,9 @@ from med_notes.sagemaker_job import build_sourcedir, job_name, summarize_job, tr
 def check_configs():
     exps = load_experiments(ROOT / "configs" / "experiments.yml")
     main = select_experiments(exps, "group:main")
-    assert len(main) == 9 and {exps[n].family for n in main} == {"biobart", "bart_large_cnn", "t5_base"}, main
+    assert len(main) == 12 and {exps[n].family for n in main} == {"biobart", "t5_base", "pegasus_large", "biobart_large"}, main
+    assert {exps[n].family for n in select_experiments(exps, "group:large")} == {"pegasus_large", "biobart_large"}
+    assert {exps[n].family for n in select_experiments(exps, "group:archive")} == {"bart_large_cnn", "bart_large_cnn_minlen"}
     assert select_experiments(exps, "biobart") == ["biobart_s13", "biobart_s42", "biobart_s2026"]
     assert select_experiments(exps, "group:pilot") == ["pilot_biobart_s42"]
     assert exps["t5_base_s42"].input_prefix == "summarize: " and exps["t5_base_s42"].learning_rate == 3e-4

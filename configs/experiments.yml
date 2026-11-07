@@ -3,7 +3,9 @@
 # Keys map to med_notes.config.ExperimentConfig.
 #
 # The `experiments` job parameter selects runs:
-#   group:main          the 3 models x 3 seeds
+#   group:main          the models in the final comparison, 3 seeds each
+#   group:large         the large-model round (PEGASUS-large, BioBART-large)
+#   group:archive       recipes kept for the record, not in the comparison (BART-large-CNN)
 #   group:pilot         one BioBART run, to measure real cost and timing before the full job
 #   biobart             every seed of one model
 #   biobart_s42         one run
@@ -28,10 +30,29 @@ experiments:
     learning_rate: 5.0e-5
     est_minutes: 8
 
-  # General BART fine-tuned on CNN/DailyMail summarization. Largest model of the three.
+  # Large models (second round). PEGASUS-large is the pretrained-only checkpoint (gap-sentence
+  # generation on C4 + news), not one fine-tuned to a single summarization task. It has no <s> start token,
+  # and its SentencePiece vocabulary has no newline (it writes the template on one line, like T5).
+  - name: pegasus_large
+    model_name: google/pegasus-large
+    learning_rate: 5.0e-5
+    groups: [main, large]
+    est_minutes: 12
+
+  # The large version of the biomedical BART: does the domain model improve with size?
+  - name: biobart_large
+    model_name: GanjinZero/biobart-v2-large
+    learning_rate: 3.0e-5
+    groups: [main, large]
+    est_minutes: 9
+
+  # ARCHIVED: BART fine-tuned on CNN/DailyMail. Too specialized to news-highlight summarization for this
+  # task: worst model in the first 3x3 run, and some seeds collapse into repeating the start token
+  # (<s><s><s>..., 47% "empty" notes). Kept for the record; not part of the main comparison.
   - name: bart_large_cnn
     model_name: facebook/bart-large-cnn
     learning_rate: 3.0e-5
+    groups: [archive]
     est_minutes: 18
 
   # T5 fine-tunes at a much higher LR than BART-family models; 3e-5 badly undertrains it.
@@ -50,7 +71,7 @@ experiments:
     model_name: facebook/bart-large-cnn
     learning_rate: 3.0e-5
     generation: {min_length: 10}
-    groups: [bart_followup]
+    groups: [archive, bart_followup]
     est_minutes: 6
 
   # One BioBART run, for checking real cost and timing before the full job.

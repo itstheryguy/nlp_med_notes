@@ -124,7 +124,7 @@ def note_html(title: str, family: str | None, text: str, fields_json: str | None
     c = color(family) if family else INK[mode()]["reference"]
     if not (text or "").strip():
         body = '<div class="empty">(empty note: the model generated nothing)</div>'
-    elif fields_json:
+    elif isinstance(fields_json, str):  # missing values arrive as NaN from JSON, which is truthy
         fields = json.loads(fields_json)
         rows = []
         for f in FIELDS:
@@ -136,7 +136,10 @@ def note_html(title: str, family: str | None, text: str, fields_json: str | None
             rows.append(f'<div class="field"><b>{f}:</b> {val}{flag}</div>')
         body = "".join(rows)
     else:
-        body = f'<div class="field">{_highlight(text, terms)}</div><div class="meta">⚠ not in the 4-field template</div>'
+        # Shown as written, line by line, so invented or repeated field labels are visible.
+        lines = "".join(f'<div class="field">{_highlight(line, terms)}</div>' for line in text.splitlines() if line.strip())
+        body = (lines + f'<div class="meta"><span class="tag" style="--t:{STATUS["warning"]}">⚠ not in the 4-field '
+                'template</span>a field label is missing, repeated, out of order, or invented</div>')
     claims = ""
     if verdict:
         bad = [cl for cl in verdict.get("claims", []) if cl.get("label") != "supported"]

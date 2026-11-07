@@ -25,4 +25,27 @@ for i, opt in enumerate(at.radio[0].options):
         at.radio[0].set_value(opt); at.selectbox[0].set_value(fam); at.run()
         if at.exception: print("traps ERR", opt, fam, str(at.exception[0].value)[:600]); bad += 1; break
 print("traps all combos:", "OK" if not bad else "see errors")
+
+# Every note and reference card renders (catches data the default selections never reach, like #300).
+sys.path.insert(0, APP)
+import lib  # noqa: E402
+
+lib.load.clear()
+examples, notes, runs, summary = lib.load()
+failures = []
+for r in notes.itertuples():
+    try:
+        lib.note_html("x", r.family, r.prediction, r.fields_json, r.unsupported_terms, verdict=r.verdict,
+                      filled_na=r.filled_na_fields)
+    except Exception as e:
+        failures.append(f"note {r.experiment} #{r.example_id}: {type(e).__name__}: {e}")
+for r in examples.itertuples():
+    try:
+        lib.note_html("ref", None, r.reference, r.ref_fields_json, r.ref_unsupported_terms, verdict=r.ref_verdict)
+    except Exception as e:
+        failures.append(f"reference #{r.example_id}: {type(e).__name__}: {e}")
+print(f"render every card: {len(notes) + len(examples)} cards,", "OK" if not failures else f"{len(failures)} FAILED")
+for f in failures[:5]:
+    print("   ", f)
+bad += len(failures)
 sys.exit(1 if bad else 0)

@@ -41,6 +41,17 @@ experiments:
     learning_rate: 3.0e-4
     est_minutes: 10
 
+  # Follow-up to the first 3x3 run: 47% of bart_large_cnn notes were empty. The class runs kept the
+  # checkpoint's min_length=56 (CNN/DailyMail), which forces output and pads short notes; the main recipe
+  # sets 0. min_length=10 blocks an empty note without forcing content: the shortest valid note (four
+  # N/A fields) is ~20 tokens.
+  - name: bart_large_cnn_minlen
+    model_name: facebook/bart-large-cnn
+    learning_rate: 3.0e-5
+    generation: {min_length: 10}
+    groups: [bart_followup]
+    est_minutes: 6
+
   # One BioBART run, for checking real cost and timing before the full job.
   - name: pilot_biobart
     model_name: GanjinZero/biobart-v2-base

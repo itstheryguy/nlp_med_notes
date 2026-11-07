@@ -39,6 +39,9 @@ def check_configs():
     assert exps["bart_large_cnn_s13"].generation_kwargs()["no_repeat_ngram_size"] == 0
     c = exps["biobart_s42"]
     assert type(c).from_dict(json.loads(json.dumps(c.to_dict()))) == c  # plan.json round trip
+    assert select_experiments(exps, "group:bart_followup") == [
+        "bart_large_cnn_minlen_s13", "bart_large_cnn_minlen_s42", "bart_large_cnn_minlen_s2026"]
+    assert exps["bart_large_cnn_minlen_s42"].generation_kwargs()["min_length"] == 10
     print("configs ok:", len(exps), "runs")
     return exps
 

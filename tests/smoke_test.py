@@ -55,7 +55,10 @@ def check_data():
 def check_audit(silver):
     ok = "Symptoms: cough\nDiagnosis: N/A\nHistory of Patient: smoker\nPlan of Action: N/A."
     assert parse_template(ok) == {"Symptoms": "cough", "Diagnosis": "N/A", "History of Patient": "smoker", "Plan of Action": "N/A."}
-    assert parse_template(ok + "\nPatient: extra text") is None          # content outside the template
+    assert parse_template(ok.replace("\n", " ")) == parse_template(ok)  # T5 writes one line (no newline token)
+    assert parse_template("Note: " + ok) is None                          # content before the template
+    # Trailing text after the last label belongs to Plan of Action (labels, not lines, delimit fields).
+    assert parse_template(ok + " Follow up in 2 weeks.")["Plan of Action"] == "N/A. Follow up in 2 weeks."
     assert parse_template("Diagnosis: x\nSymptoms: y\nHistory of Patient: z\nPlan of Action: w") is None  # order
     missing, _ = unsupported_terms("Allergy: penicillin (hives), sulfa. Dose 500 mg.",
                                    "Doctor: Any allergies? Patient: Penicillin gives me hives. I take 250 a day.")

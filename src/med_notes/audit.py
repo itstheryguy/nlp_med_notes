@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 FIELDS = ["Symptoms", "Diagnosis", "History of Patient", "Plan of Action"]
-_FIELD_RE = re.compile(r"^\s*(Symptoms|Diagnosis|History of Patient|Plan of Action)\s*:\s*(.*)$", re.IGNORECASE)
+_LABEL_RE = re.compile(r"\b(Symptoms|Diagnosis|History of Patient|Plan of Action)\s*:", re.IGNORECASE)
 _NA_VALUES = {"n/a", "na", "none", "not applicable", "not mentioned", ""}
 
 # Words that carry no clinical claim: template labels, discourse verbs, generic nouns.
@@ -108,21 +108,20 @@ GROUNDING_FLAG_MIN = 3  # flag a note with this many unsupported words, or any u
 
 
 def parse_template(text: str) -> dict | None:
-    """Field -> value if the note follows the 4-field template exactly; else None."""
-    found: dict[str, str] = {}
-    order: list[str] = []
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        m = _FIELD_RE.match(line)
-        if not m:
-            return None  # content outside the template
-        name = next(f for f in FIELDS if f.lower() == m.group(1).lower())
-        if name in found:
-            return None
-        found[name] = m.group(2).strip()
-        order.append(name)
-    return found if order == FIELDS else None
+    """Field -> value if the note follows the 4-field template exactly; else None.
+
+    Fields are found by their labels, not by line breaks: T5's SentencePiece vocabulary has no newline
+    token, so T5 writes all four fields on one line.
+    """
+    matches = list(_LABEL_RE.finditer(text))
+    if not matches or text[: matches[0].start()].strip():
+        return None  # missing labels, or content before the first field
+    names = [next(f for f in FIELDS if f.lower() == m.group(1).lower()) for m in matches]
+    if names != FIELDS:
+        return None  # a field missing, repeated, or out of order
+    bounds = [m.end() for m in matches] + [len(text)]
+    starts = [m.start() for m in matches[1:]] + [len(text)]
+    return {name: text[bounds[i]:starts[i]].strip() for i, name in enumerate(names)}
 
 
 def is_na(value: str) -> bool:

@@ -4,7 +4,9 @@ Fine-tunes three seq2seq models to turn a doctor-patient conversation from [MTS-
 
 It began as an MSDS 453 class project in Google Colab ([`nlp final project/previous work/`](nlp%20final%20project/previous%20work/)). That work compared ten single-run hyperparameter tweaks by ROUGE. The tweaks moved the metrics less than run-to-run noise, and the real failures (wrong medication placement, symptoms escalated into diagnoses) only appeared in manual review. This version is built around those two lessons: **repeat runs instead of tweaks, and measure faithfulness directly.**
 
-**Roadmap:** ✅ Databricks pipeline → ✅ first full run (3 models × 3 seeds) → ▶️ Hugging Face Space (`space/`) → prod run + publish
+**Live app:** [huggingface.co/spaces/itstheryguy/clinical-note-summarization](https://huggingface.co/spaces/itstheryguy/clinical-note-summarization), built from the prod run tagged `results-v1`.
+
+**Roadmap:** ✅ Databricks pipeline → ✅ model comparison (4 models × 3 seeds, prod) → ✅ Hugging Face Space
 
 ## Design
 
@@ -121,6 +123,13 @@ for f in examples.json notes.json runs.json summary.json; do
   databricks fs cp --overwrite dbfs:/Volumes/workspace/<schema>/pipeline/space_export/<name>/$f space/data/$f; done
 # 3. Test headless with regular Streamlit, then check the static build the way HF serves it
 cd space && python test_app.py && python -m http.server 8600   # open http://localhost:8600/index.html
+```
+
+Publish a new snapshot (after step 3):
+
+```bash
+hf upload itstheryguy/clinical-note-summarization space . --repo-type space \
+  --exclude "__pycache__/*" --exclude "*/__pycache__/*" --exclude "test_app.py"
 ```
 
 ## Layout

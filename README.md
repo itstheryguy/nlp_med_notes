@@ -108,16 +108,19 @@ python tests/smoke_test.py
 
 ## Hugging Face Space (`space/`)
 
-A Streamlit app with an overview, a note explorer, a "model traps" page and the methods. It reads a **static
-snapshot**, not Databricks: the public Space holds no credentials and keeps working after the workspace is gone.
+A Streamlit app with an overview, a note explorer, a "model traps" page and the methods, published as a **static**
+Hugging Face Space: [stlite](https://github.com/whitphx/stlite) runs Streamlit in the browser (`space/index.html`),
+so the free tier works and there's no server. It reads a snapshot (JSON), not Databricks: the public Space holds no
+credentials and keeps working after the workspace is gone.
 
 ```bash
 # 1. Export a snapshot of chosen job runs (prod for the published version)
 databricks bundle run -t dev export_space --params job_run_ids=<run1>,<run2>,export_id=<name>
-# 2. Pull it into the Space folder
-databricks fs cp -r --overwrite dbfs:/Volumes/workspace/med_notes_dev/pipeline/space_export/<name> space/data
-# 3. Test headless, then run locally
-cd space && python test_app.py && streamlit run app.py
+# 2. Pull the JSON + summary into the Space folder
+for f in examples.json notes.json runs.json summary.json; do
+  databricks fs cp --overwrite dbfs:/Volumes/workspace/<schema>/pipeline/space_export/<name>/$f space/data/$f; done
+# 3. Test headless with regular Streamlit, then check the static build the way HF serves it
+cd space && python test_app.py && python -m http.server 8600   # open http://localhost:8600/index.html
 ```
 
 ## Layout

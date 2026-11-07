@@ -8,9 +8,11 @@
 # MAGIC
 # MAGIC | File | Grain |
 # MAGIC |---|---|
-# MAGIC | `examples.parquet` | one row per test example: dialogue, reference, reference audit results |
-# MAGIC | `notes.parquet` | one row per run per test example: generated note, tier-1 checks, judge verdict, per-field N/A diff |
-# MAGIC | `runs.parquet` | one row per run: overlap, tier-1, and judge rates |
+# MAGIC | `examples.{json,parquet}` | one row per test example: dialogue, reference, reference audit results |
+# MAGIC | `notes.{json,parquet}` | one row per run per test example: generated note, tier-1 checks, judge verdict, per-field N/A diff |
+# MAGIC | `runs.{json,parquet}` | one row per run: overlap, tier-1, and judge rates |
+# MAGIC
+# MAGIC The Space ships the JSON files (it runs in the browser via stlite); parquet is for analysis.
 # MAGIC | `summary.json` | per-model mean ± sd, reference ceiling, audit calibration, training cost, provenance |
 # MAGIC
 # MAGIC `job_run_ids` picks which job runs to publish (comma-separated). Publish from the prod target for the
@@ -76,7 +78,13 @@ export_id = dbutils.widgets.get("export_id") or datetime.now(timezone.utc).strft
 out = f"/Volumes/{catalog}/{schema}/pipeline/space_export/{export_id}"
 os.makedirs(out, exist_ok=True)
 for name in ("examples", "notes", "runs"):
-    snap[name].to_parquet(f"{out}/{name}.parquet", index=False)
+    df = snap[name].copy()
+    df.to_parquet(f"{out}/{name}.parquet", index=False)  # for analysis
+    for c in df.columns:  # numpy arrays -> lists, so the JSON is plain
+        if df[c].dtype == object:
+            df[c] = df[c].apply(lambda v: v.tolist() if hasattr(v, "tolist") else v)
+    # The static Space (stlite, in the browser) reads JSON: pyarrow may not be available under Pyodide.
+    df.to_json(f"{out}/{name}.json", orient="records")
 with open(f"{out}/summary.json", "w") as f:
     json.dump(snap["summary"], f, indent=2, default=str)
 print(f"Exported to {out}: {len(snap['examples'])} examples, {len(snap['notes'])} notes, {len(snap['runs'])} runs")

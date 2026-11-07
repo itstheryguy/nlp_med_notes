@@ -1,4 +1,6 @@
-"""Shared data, palette, and rendering for the Space. Reads only the exported snapshot in ./data."""
+"""Shared data, palette, and rendering for the Space. Reads only the exported snapshot in ./data.
+
+Runs under regular Streamlit (local) and stlite (the static Hugging Face Space, in the browser)."""
 
 from __future__ import annotations
 
@@ -57,9 +59,10 @@ def label(family: str) -> str:
 
 @st.cache_data
 def load() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
-    examples = pd.read_parquet(DATA / "examples.parquet")
-    notes = pd.read_parquet(DATA / "notes.parquet")
-    runs = pd.read_parquet(DATA / "runs.parquet")
+    # JSON, not parquet: the static Space runs in the browser (stlite/Pyodide), where pyarrow may be missing.
+    examples = pd.read_json(DATA / "examples.json", orient="records")
+    notes = pd.read_json(DATA / "notes.json", orient="records")
+    runs = pd.read_json(DATA / "runs.json", orient="records")
     summary = json.loads((DATA / "summary.json").read_text())
     for df, col in ((notes, "verdict_json"), (examples, "ref_verdict_json")):
         df[col.replace("_json", "")] = [json.loads(v) if isinstance(v, str) else None for v in df[col]]

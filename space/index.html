@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clinical Note Traps</title>
+    <!-- stlite runs Streamlit in the browser (Pyodide), so this is a static Space with no server.
+         Pinned so an upstream release can't change the app. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/browser@1.12.0/build/stlite.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import { mount } from "https://cdn.jsdelivr.net/npm/@stlite/browser@1.12.0/build/stlite.js";
+      mount(
+        {
+          // Streamlit, pandas, and Altair ship with stlite; nothing else is needed.
+          requirements: [],
+          entrypoint: "app.py",
+          // stlite doesn't read .streamlit/config.toml; same settings as that file.
+          streamlitConfig: {
+            "client.toolbarMode": "viewer",
+            "theme.light.primaryColor": "#6250d6",
+            "theme.dark.primaryColor": "#9085e9",
+          },
+          files: {
+            "app.py": { url: "./app.py" },
+            "lib.py": { url: "./lib.py" },
+            "views/explorer.py": { url: "./views/explorer.py" },
+            "views/methods.py": { url: "./views/methods.py" },
+            "views/overview.py": { url: "./views/overview.py" },
+            "views/traps.py": { url: "./views/traps.py" },
+            "data/examples.json": { url: "./data/examples.json" },
+            "data/notes.json": { url: "./data/notes.json" },
+            "data/runs.json": { url: "./data/runs.json" },
+            "data/summary.json": { url: "./data/summary.json" }
+          },
+        },
+        document.getElementById("root"),
+      );
+    </script>
+  </body>
+</html>

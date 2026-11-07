@@ -106,8 +106,21 @@ def _highlight(text: str, terms: list[str]) -> str:
     return out
 
 
+JUDGE_NAMES = {"databricks-gpt-oss-120b": "gpt-oss-120b", "databricks-qwen3-next-80b-a3b-instruct": "Qwen3-Next-80B"}
+
+
+def judge_name(endpoint: str | None) -> str:
+    return JUDGE_NAMES.get(endpoint or "", (endpoint or "").replace("databricks-", ""))
+
+
+def _ok(v) -> bool:
+    return v is not None and v == v  # not None / NaN
+
+
 def note_html(title: str, family: str | None, text: str, fields_json: str | None, terms: list[str],
-              meta: str = "", verdict: dict | None = None, filled_na: list[str] | None = None) -> str:
+              meta: str = "", verdict: dict | None = None, filled_na: list[str] | None = None,
+              second: dict | None = None) -> str:
+    """second: {"name", "faithful", "score", "primary_faithful"} for the second judge's one-line verdict."""
     c = color(family) if family else INK[mode()]["reference"]
     if not (text or "").strip():
         body = '<div class="empty">(empty note: the model generated nothing)</div>'
@@ -140,6 +153,15 @@ def note_html(title: str, family: str | None, text: str, fields_json: str | None
         if not items:
             items.append(f'<div class="claim"><span class="tag" style="--t:{STATUS["good"]}">✓ judge found no problems</span></div>')
         claims = '<div class="meta" style="margin-top:.5rem">LLM judge</div>' + "".join(items)
+    if second and _ok(second.get("faithful")):
+        key = "good" if second["faithful"] else "serious"
+        mark = "✓ faithful" if second["faithful"] else "✕ not faithful"
+        disagree = (_ok(second.get("primary_faithful")) and bool(second["primary_faithful"]) != bool(second["faithful"]))
+        claims += (f'<div class="claim" style="margin-top:.35rem"><span class="meta">Second judge ({html.escape(second["name"])}):</span> '
+                   f'<span class="tag" style="--t:{STATUS[key]}">{mark}</span>'
+                   + (f'score {second["score"]:.0f}/5 ' if _ok(second.get("score")) else "")
+                   + (f'<span class="tag" style="--t:{STATUS["warning"]}">⚠ judges disagree</span>' if disagree else "")
+                   + "</div>")
     return (f'<div class="note" style="--c:{c}"><h5>{html.escape(title)}</h5>'
             + (f'<div class="meta">{meta}</div>' if meta else "") + body + claims + "</div>")
 

@@ -2,7 +2,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from lib import INK, chart_config, color, css, label, load, mode
+from lib import INK, chart_config, color, css, judge_name, label, load, mode
 
 examples, notes, runs, summary = load()
 css()
@@ -78,6 +78,79 @@ if len(ok):
     )
 with st.expander("Table view"):
     st.dataframe(cal.assign(model=cal["family"].map(label)).set_index("model").drop(columns="family"), width="stretch")
+
+judges = summary.get("judges") or {}
+if judges.get("secondary"):
+    j1, j2 = judge_name(judges.get("primary")), judge_name(judges["secondary"])
+    st.subheader("Can the judge be trusted?")
+    st.markdown(
+        f"Every faithfulness number on this site comes from an LLM judge, so the judge needs auditing too. Two checks: "
+        f"**{j1}** (the primary judge) re-judges a sample of notes it has already judged, and a second, independent "
+        f"judge, **{j2}**, audits every note. Both judges only *label* claims and omissions; the score and the "
+        "faithful/not decision are computed from those labels by a fixed rule, and identical notes are judged once "
+        "and cached, so the same note can never get two different verdicts from the same judge."
+    )
+
+    def kappa_words(k):
+        if k is None:
+            return "n/a"
+        return ("almost perfect" if k > .8 else "substantial" if k > .6 else "moderate" if k > .4
+                else "fair" if k > .2 else "slight" if k > 0 else "no better than chance")
+
+    c1, c2, c3 = st.columns(3)
+    sc = {d["endpoint"]: d for d in judges.get("self_consistency", [])}
+    if judges.get("primary") in sc:
+        c1.metric(f"{j1} agrees with itself", f"{sc[judges['primary']]['faithful_agreement']:.0%}",
+                  help=f"Faithful/not on {sc[judges['primary']]['n']} notes judged twice (cache bypassed for the repeat).")
+    if judges["secondary"] in sc:
+        c2.metric(f"{j2} agrees with itself", f"{sc[judges['secondary']]['faithful_agreement']:.0%}",
+                  help=f"Faithful/not on {sc[judges['secondary']]['n']} notes judged twice.")
+    co = judges.get("cross_overall") or {}
+    if co.get("agreement") is not None:
+        c3.metric("The two judges agree", f"{co['agreement']:.0%}",
+                  help=f"Faithful/not on {co['n']} model notes. Cohen's kappa {co['kappa']:.2f} "
+                       f"({kappa_words(co['kappa'])} agreement beyond chance).")
+
+    by = pd.DataFrame(judges.get("cross_by_family", []))
+    ref = judges.get("cross_reference") or {}
+    if len(by):
+        rows = by[["family", "primary_faithful", "secondary_faithful"]].copy()
+        if ref.get("primary_faithful") is not None:
+            rows = pd.concat([rows, pd.DataFrame([{"family": "reference", "primary_faithful": ref["primary_faithful"],
+                                                   "secondary_faithful": ref["secondary_faithful"]}])], ignore_index=True)
+        rows["model"] = [("Clinician reference" if f == "reference" else label(f)) for f in rows["family"]]
+        rows["c"] = [(INK[mode()]["reference"] if f == "reference" else color(f)) for f in rows["family"]]
+        long = rows.melt(id_vars=["family", "model", "c"], value_vars=["primary_faithful", "secondary_faithful"],
+                         var_name="judge", value_name="rate")
+        long["judge"] = long["judge"].map({"primary_faithful": j1, "secondary_faithful": j2})
+        order = [m for m in rows["model"]]
+        ink = INK[mode()]
+        base = alt.Chart(long).encode(y=alt.Y("model:N", sort=order, title=None, axis=alt.Axis(labelLimit=200)))
+        link = alt.Chart(rows).mark_rule(color=ink["grid"], strokeWidth=2).encode(
+            y=alt.Y("model:N", sort=order), x="primary_faithful:Q", x2="secondary_faithful:Q")
+        pts = base.mark_point(size=150, strokeWidth=2.5).encode(
+            x=alt.X("rate:Q", scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format=".0%", tickCount=5), title=None),
+            color=alt.Color("c:N", scale=None),
+            shape=alt.Shape("judge:N", scale=alt.Scale(domain=[j1, j2], range=["circle", "diamond"]),
+                            legend=alt.Legend(title=None, orient="top")),
+            fill=alt.condition(alt.datum.judge == j1, alt.Color("c:N", scale=None), alt.value("transparent")),
+            tooltip=[alt.Tooltip("model:N"), alt.Tooltip("judge:N"), alt.Tooltip("rate:Q", format=".0%", title="Faithful")])
+        st.altair_chart(chart_config(alt.layer(link, pts).properties(
+            title=alt.TitleParams("Faithful rate under each judge", subtitle=f"filled circle: {j1} · hollow diamond: {j2}",
+                                  subtitleColor=ink["secondary"], subtitleFontSize=11),
+            height=46 * len(rows) + 20)), width="stretch", theme=None)
+
+        models = by.sort_values("primary_faithful", ascending=False)["family"].tolist()
+        models2 = by.sort_values("secondary_faithful", ascending=False)["family"].tolist()
+        same_top = models[0] == models2[0]
+        st.markdown(
+            f"{'Both judges put **' + label(models[0]) + '** first' if same_top else f'The judges disagree on the top model ({label(models[0])} vs {label(models2[0])})'}"
+            f"; the full ranking {'matches' if models == models2 else 'differs'} between them. "
+            f"{j2} is {'stricter' if by['secondary_faithful'].mean() < by['primary_faithful'].mean() else 'more lenient'} overall. "
+            "The absolute faithful rate depends on which judge you ask; comparisons made under one judge are what hold up."
+        )
+        with st.expander("Table view"):
+            st.dataframe(by.assign(model=by["family"].map(label)).set_index("model").drop(columns="family"), width="stretch")
 
 st.subheader("Seed spread")
 st.markdown("The same recipe, three seeds. Spread this size is why single-run comparisons can mislead.")

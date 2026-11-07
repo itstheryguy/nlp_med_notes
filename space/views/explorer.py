@@ -1,9 +1,18 @@
 import streamlit as st
 
-from lib import css, dialogue_html, label, load, note_html
+from lib import css, dialogue_html, judge_name, label, load, note_html
 
 examples, notes, runs, summary = load()
 css()
+judges = summary.get("judges") or {}
+j2 = judge_name(judges.get("secondary")) if judges.get("secondary") else None
+
+def second_for(row, prefix: str = "j2_", primary_col: str = "faithful"):
+    """The second judge's one-line verdict for a note (or the reference, with prefix 'ref_j2_')."""
+    if not j2 or f"{prefix}faithful" not in row:
+        return None
+    return {"name": j2, "faithful": row[f"{prefix}faithful"], "score": row.get(f"{prefix}faithfulness_score"),
+            "primary_faithful": row.get(primary_col)}
 
 st.title("Note explorer")
 st.markdown(
@@ -55,7 +64,8 @@ with right:
     ref_meta = (f"judge score {ex['ref_faithfulness_score']:.0f}/5" if ex.get("ref_faithfulness_score") == ex.get("ref_faithfulness_score")
                 and ex.get("ref_faithfulness_score") is not None else "")
     st.markdown(note_html("Clinician reference", None, ex["reference"], ex["ref_fields_json"], ex["ref_unsupported_terms"],
-                          meta=ref_meta, verdict=ex["ref_verdict"]), unsafe_allow_html=True)
+                          meta=ref_meta, verdict=ex["ref_verdict"],
+                          second=second_for(ex, "ref_j2_", "ref_faithful")), unsafe_allow_html=True)
     for fam in summary["family_order"]:
         n = row_notes[row_notes["family"] == fam]
         if n.empty:
@@ -65,5 +75,6 @@ with right:
         if n["faithfulness_score"] == n["faithfulness_score"] and n["faithfulness_score"] is not None:
             bits.append(f"judge score {n['faithfulness_score']:.0f}/5")
         st.markdown(note_html(label(fam), fam, n["prediction"], n["fields_json"], n["unsupported_terms"],
-                              meta=" · ".join(bits), verdict=n["verdict"], filled_na=n["filled_na_fields"]),
+                              meta=" · ".join(bits), verdict=n["verdict"], filled_na=n["filled_na_fields"],
+                              second=second_for(n)),
                     unsafe_allow_html=True)

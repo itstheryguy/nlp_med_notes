@@ -45,8 +45,11 @@ TRAPS = [
     {
         "key": "empty", "title": "Writes nothing at all", "source": "tier-1",
         "test": lambda n: n["empty_prediction"], "scope": None,
-        "why": "An empty note can't hallucinate, so it scores well on a hallucination rate while being useless. "
-               "A metric you can win by staying silent needs a partner metric (omissions).",
+        "why": "BART-large's \"empty\" notes are really 256 start tokens in a row (`<s><s><s>…`): some training seeds "
+               "collapse into repeating the start token, which decodes to nothing. Decoding settings can't fix it "
+               "(forcing a minimum length was tested and barely helped). And an empty note can't hallucinate, so it "
+               "scores well on a hallucination rate while being useless: a metric you can win by staying silent "
+               "needs a partner metric (omissions).",
     },
     {
         "key": "misplaced", "title": "Right fact, wrong field", "source": "judge",

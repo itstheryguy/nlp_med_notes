@@ -57,8 +57,9 @@ if {"t5_base", "biobart"} <= set(by.index):
 if "bart_large_cnn" in by.index:
     g = by.loc["bart_large_cnn"]
     lines.append(f"**BART-large-CNN looks safest and isn't.** Only {g['hallucination_rate']:.0%} of its notes "
-                 f"hallucinate, because {g['empty_rate']:.0%} of its notes are empty. It also swings by "
-                 f"± {g['rougeL_sd']:.2f} ROUGE-L between seeds. See **Model traps**.")
+                 f"hallucinate, because {g['empty_rate']:.0%} of its notes are empty: some training seeds collapse "
+                 f"into repeating the start token. It swings by ± {g['rougeL_sd']:.2f} ROUGE-L between seeds. "
+                 "See **Model traps**.")
 lines.append(f"**Even the clinicians' notes aren't 100%.** The judge rates {ref['faithful_rate']:.0%} faithful: "
              "references sometimes include facts the dialogue excerpt doesn't contain. Models are judged against "
              "that ceiling, not against perfection.")

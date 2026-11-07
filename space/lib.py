@@ -16,17 +16,20 @@ import streamlit as st
 DATA = Path(__file__).parent / "data"
 FIELDS = ["Symptoms", "Diagnosis", "History of Patient", "Plan of Action"]
 
-# Fixed order; a model keeps its color on every page. The first three slots of the reference palette
-# pass every colorblind/contrast gate in both modes. The BART min_length follow-up is a variant of
-# BART, so it shares BART's hue and is told apart by label and marker shape.
+# Fixed order; a model keeps its color on every page, and rows are drawn in this order. Slots follow the
+# reference palette's validated adjacent order (blue, orange, aqua, yellow); every chart also labels each row
+# by name, so color is never the only cue. Archived BART-large shares a slot only if a snapshot includes it.
 MODELS = {
     "biobart": {"label": "BioBART-base", "slot": 0, "params": "166M", "about": "BART pretrained on PubMed text"},
     "t5_base": {"label": "T5-base", "slot": 1, "params": "223M", "about": "text-to-text, general pretraining"},
-    "bart_large_cnn": {"label": "BART-large-CNN", "slot": 2, "params": "406M", "about": "news summarizer (CNN/DailyMail)"},
-    "bart_large_cnn_minlen": {"label": "BART-large-CNN, min_length=10", "slot": 2, "params": "406M",
-                              "about": "same model, empty notes blocked at decode time"},
+    "biobart_large": {"label": "BioBART-large", "slot": 2, "params": "406M", "about": "larger biomedical BART"},
+    "pegasus_large": {"label": "PEGASUS-large", "slot": 3, "params": "568M",
+                      "about": "gap-sentence pretraining (pretrained-only checkpoint)"},
+    "bart_large_cnn": {"label": "BART-large-CNN (archived)", "slot": 2, "params": "406M", "about": "news summarizer"},
+    "bart_large_cnn_minlen": {"label": "BART-large-CNN, min_length=10 (archived)", "slot": 2, "params": "406M",
+                              "about": "same model, minimum decode length"},
 }
-SERIES = {"light": ["#2a78d6", "#eb6834", "#1baf7a"], "dark": ["#3987e5", "#d95926", "#199e70"]}
+SERIES = {"light": ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"], "dark": ["#3987e5", "#d95926", "#199e70", "#c98500"]}
 INK = {
     "light": {"primary": "#0b0b0b", "secondary": "#52514e", "muted": "#898781", "grid": "#e1e0d9",
               "axis": "#c3c2b7", "reference": "#52514e", "mark": "#fff3bf", "surface": "#fcfcfb"},

@@ -11,9 +11,9 @@
 # MAGIC | `examples.{json,parquet}` | one row per test example: dialogue, reference, reference audit results |
 # MAGIC | `notes.{json,parquet}` | one row per run per test example: generated note, tier-1 checks, judge verdict, per-field N/A diff |
 # MAGIC | `runs.{json,parquet}` | one row per run: overlap, tier-1, and judge rates |
+# MAGIC | `summary.json` | per-model mean ± sd, reference ceiling, audit calibration, training cost, provenance |
 # MAGIC
 # MAGIC The Space ships the JSON files (it runs in the browser via stlite); parquet is for analysis.
-# MAGIC | `summary.json` | per-model mean ± sd, reference ceiling, audit calibration, training cost, provenance |
 # MAGIC
 # MAGIC `job_run_ids` picks which job runs to publish (comma-separated). Publish from the prod target for the
 # MAGIC final version, so the snapshot traces back to one tagged commit and one schema.

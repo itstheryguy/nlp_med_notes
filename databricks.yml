@@ -90,8 +90,9 @@ resources:
           default: ${var.sagemaker_role_arn}
         - name: sagemaker_instance_type
           default: ${var.sagemaker_instance_type}
+        # On-demand by default: spot hit "insufficient capacity" waits, and on credits the time costs more than the savings.
         - name: sagemaker_use_spot
-          default: "true"
+          default: "false"
         - name: sagemaker_usd_per_hour
           default: "1.2575"
         - name: mlflow_experiment

@@ -61,8 +61,8 @@ for table, df in frames.items():
     spark.createDataFrame(df).write.mode("append").option("mergeSchema", "true").saveAsTable(table)
     print(f"{table}: {len(df)} rows")
 
-if not spark.catalog.tableExists("reference_checks"):
-    spark.createDataFrame(reference_tier1(silver)).write.saveAsTable("reference_checks")
+# Rebuilt every run (seconds) so the reference row always uses the same checks as the models.
+spark.createDataFrame(reference_tier1(silver)).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable("reference_checks")
 
 import json
 from datetime import datetime, timezone

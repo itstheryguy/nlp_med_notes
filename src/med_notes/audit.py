@@ -31,12 +31,78 @@ continued received placed then year-old years-old old male female onset unknown 
 treated treatment presents presented presenting follow follow-up regarding related due consistent
 """.split())
 
-_NUMBER_WORDS = {w: str(i) for i, w in enumerate(
+_UNITS = {w: i for i, w in enumerate(
     "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
-    "seventeen eighteen nineteen twenty".split())}
-_NUMBER_WORDS.update({"thirty": "30", "forty": "40", "fifty": "50", "sixty": "60", "seventy": "70",
-                      "eighty": "80", "ninety": "90", "hundred": "100", "once": "1", "twice": "2", "single": "1",
-                      "couple": "2", "half": "0.5"})
+    "seventeen eighteen nineteen".split())}
+_UNITS["oh"] = 0  # "nineteen oh five"
+_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
+_SCALES = {"hundred": 100, "thousand": 1000}
+# Single words that stand for a number on their own.
+_NUMBER_IDIOMS = {"once": "1", "twice": "2", "single": "1", "couple": "2", "half": "0.5", "dozen": "12"}
+
+
+def _run_values(run: list[str]) -> set[str]:
+    """Every reasonable reading of one run of spoken number words.
+
+    "one hundred and eighty three" -> 183; "nineteen sixty eight" -> 1968 (a year) plus its parts
+    19 and 68; "two thousand seven" -> 2007; "five ten" -> 5, 10, 510. Being generous here only means
+    fewer false flags; a number the dialogue never says still won't match any reading.
+    """
+    words = [w for w in run if w != "and"]
+    vals: set[int] = set()
+    # Chunks: a tens word absorbs a following digit ("sixty eight" = 68), and "oh" + digit is one
+    # two-digit chunk ("oh five" = 05). Scale words stay separate.
+    chunks: list[int] = []
+    i = 0
+    while i < len(words):
+        w = words[i]
+        nxt = words[i + 1] if i + 1 < len(words) else None
+        if w in _TENS and nxt in _UNITS and 0 < _UNITS[nxt] < 10:
+            chunks.append(_TENS[w] + _UNITS[nxt])
+            i += 2
+        elif w == "oh" and nxt in _UNITS and _UNITS[nxt] < 10:
+            chunks.append(_UNITS[nxt])
+            i += 2
+        else:
+            chunks.append(_TENS.get(w, _UNITS.get(w, _SCALES.get(w, 0))))
+            i += 1
+    has_scale = any(w in _SCALES for w in words)
+    if has_scale:  # cardinal: "one hundred and eighty three" = 183, "two thousand seven" = 2007
+        total = current = 0
+        for w in words:
+            if w in _UNITS:
+                current += _UNITS[w]
+            elif w in _TENS:
+                current += _TENS[w]
+            elif w == "hundred":
+                current = max(current, 1) * 100
+            elif w == "thousand":
+                total += max(current, 1) * 1000
+                current = 0
+        vals.add(total + current)
+    elif len(chunks) == 2 and 10 <= chunks[0] <= 99 and chunks[1] <= 99:
+        vals.add(chunks[0] * 100 + chunks[1])  # a year: "nineteen sixty eight", "nineteen oh five"
+    vals.update(chunks)  # each part on its own ("five ten" may be 5 and 10)
+    vals.update(_UNITS.get(w, _TENS.get(w)) for w in words if w in _UNITS or w in _TENS)
+    return {str(v) for v in vals}
+
+
+def spoken_numbers(words: list[str]) -> set[str]:
+    """Digit strings for every number the words say, spelled out or as idioms."""
+    out, run = set(), []
+    for w in [*words, None]:
+        if w is not None and (w in _UNITS or w in _TENS or w in _SCALES or (w == "and" and run)):
+            run.append(w)
+            continue
+        while run and run[-1] == "and":
+            run.pop()
+        if run:
+            out |= _run_values(run)
+            run = []
+        if w in _NUMBER_IDIOMS:
+            out.add(_NUMBER_IDIOMS[w])
+    return out
+
 
 GROUNDING_FLAG_MIN = 3  # flag a note with this many unsupported words, or any unsupported number
 
@@ -84,7 +150,7 @@ def unsupported_terms(note: str, dialogue: str) -> tuple[list[str], int]:
     dialogue_terms = _terms(dialogue)
     dia_stems = {_stem(t) for t in dialogue_terms if not t[0].isdigit()}
     dia_prefixes = {s[:5] for s in dia_stems if len(s) >= 5}
-    dia_numbers = {t for t in dialogue_terms if t[0].isdigit()} | {_NUMBER_WORDS[t] for t in dialogue_terms if t in _NUMBER_WORDS}
+    dia_numbers = {t for t in dialogue_terms if t[0].isdigit()} | spoken_numbers(dialogue_terms)
     checked, missing = 0, []
     for t in dict.fromkeys(_terms(note)):  # unique, in order
         if t[0].isdigit():

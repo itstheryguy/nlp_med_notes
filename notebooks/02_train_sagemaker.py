@@ -11,9 +11,9 @@
 # MAGIC | Share files | The run folder is on the `sagemaker` **external volume**, so `/Volumes/.../sagemaker/runs/<id>` here is `s3://<bucket>/<prefix>/runs/<id>` there. No copying |
 # MAGIC | Authenticate | Unity Catalog **service credential** → short-lived AWS credentials. No keys |
 # MAGIC | Ship code | `src/med_notes` + `sagemaker/entry.py` + requirements as a tarball in the run folder |
-# MAGIC | Cost caps | Spot pricing; `MaxRuntimeInSeconds` (the IAM policy also caps it at 4 h and limits instance types); the in-job budget guard |
+# MAGIC | Cost caps | `MaxRuntimeInSeconds` (the IAM policy also caps it at 4 h and limits instance types); the in-job budget guard. On-demand by default; spot is optional (`sagemaker_use_spot`) but can wait a long time for capacity |
 # MAGIC | Watch | Job status and key log lines (`START` / `DONE` / `FAIL`) stream into this notebook |
-# MAGIC | Resume | A spot interruption restarts the job, which skips runs that already succeeded |
+# MAGIC | Resume | If the job restarts (e.g. a spot interruption), it skips runs that already succeeded |
 # MAGIC | Record | `sagemaker_job.json` in the run folder: billable seconds, spot savings, estimated cost |
 # MAGIC
 # MAGIC If this notebook is cancelled, it stops the training job so nothing keeps billing.
@@ -34,7 +34,7 @@ dbutils.widgets.text("aws_service_credential", "aws-ml-training", "UC service cr
 dbutils.widgets.text("sagemaker_s3_root", "", "S3 URI behind the sagemaker volume")
 dbutils.widgets.text("sagemaker_role_arn", "", "SageMaker execution role ARN")
 dbutils.widgets.text("sagemaker_instance_type", "ml.g5.xlarge", "Instance type")
-dbutils.widgets.dropdown("sagemaker_use_spot", "true", ["true", "false"], "Spot pricing")
+dbutils.widgets.dropdown("sagemaker_use_spot", "false", ["true", "false"], "Spot pricing")
 dbutils.widgets.text("sagemaker_usd_per_hour", "1.2575", "On-demand $/hour (for the cost estimate)")
 
 w = {k: dbutils.widgets.get(k) for k in ["catalog", "schema", "job_run_id", "aws_region", "aws_service_credential",

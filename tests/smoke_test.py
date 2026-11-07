@@ -60,6 +60,10 @@ def check_audit(silver):
     missing, _ = unsupported_terms("Allergy: penicillin (hives), sulfa. Dose 500 mg.",
                                    "Doctor: Any allergies? Patient: Penicillin gives me hives. I take 250 a day.")
     assert "sulfa" in missing and "500" in missing and "penicillin" not in missing and "hives" not in missing, missing
+    # Spoken numbers (from the pilot): the model wrote 1961 / 135 for "nineteen sixty eight" / "one hundred and eighty three".
+    dia = "Patient: I quit in nineteen sixty eight. I am at one hundred and eighty three pounds. I was five foot ten."
+    assert {"1961", "135"} <= set(unsupported_terms("Quit in 1961, weighing 135 pounds", dia)[0])
+    assert not [t for t in unsupported_terms("Quit in 1968, 183 pounds, 5 feet 10", dia)[0] if t[0].isdigit()]
 
     ref = reference_tier1(silver)
     assert 0.9 < ref["template_ok"].mean() < 0.96, ref["template_ok"].mean()  # ~93% of references use the template

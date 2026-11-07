@@ -20,6 +20,14 @@
 
 # COMMAND ----------
 
+# MAGIC %pip install -q nltk
+
+# COMMAND ----------
+
+dbutils.library.restartPython()
+
+# COMMAND ----------
+
 import os
 import sys
 

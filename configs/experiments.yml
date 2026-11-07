@@ -28,7 +28,7 @@ experiments:
   - name: biobart
     model_name: GanjinZero/biobart-v2-base
     learning_rate: 5.0e-5
-    est_minutes: 8
+    est_minutes: 4  # measured on the A10G, plus margin
 
   # Large models (second round). PEGASUS-large is the pretrained-only checkpoint (gap-sentence
   # generation on C4 + news), not one fine-tuned to a single summarization task. It has no <s> start token,
@@ -40,15 +40,19 @@ experiments:
     # Same effective batch (16), half the peak memory.
     batch_size: 4
     grad_accum: 4
+    # At the shared 10-epoch cap every seed's best epoch was the last (val loss still falling), so it gets
+    # room to converge; early stopping still ends each run when val loss plateaus. Warmup and LR decay
+    # stretch with the cap (warmup ~2.5 epochs, slower decay).
+    max_epochs: 25
     groups: [main, large]
-    est_minutes: 12
+    est_minutes: 25
 
   # The large version of the biomedical BART: does the domain model improve with size?
   - name: biobart_large
     model_name: GanjinZero/biobart-v2-large
     learning_rate: 3.0e-5
     groups: [main, large]
-    est_minutes: 9
+    est_minutes: 7  # measured on the A10G, plus margin
 
   # ARCHIVED: BART fine-tuned on CNN/DailyMail. Too specialized to news-highlight summarization for this
   # task: worst model in the first 3x3 run, and some seeds collapse into repeating the start token
@@ -64,7 +68,7 @@ experiments:
     model_name: google-t5/t5-base
     input_prefix: "summarize: "
     learning_rate: 3.0e-4
-    est_minutes: 10
+    est_minutes: 6  # measured on the A10G, plus margin
 
   # Follow-up to the first 3x3 run, where 47% of bart_large_cnn notes were empty. Hypothesis: the main
   # recipe's min_length=0 lets the model stop immediately; min_length=10 blocks that without forcing content.

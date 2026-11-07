@@ -11,7 +11,7 @@
 # MAGIC | Share files | The run folder is on the `sagemaker` **external volume**, so `/Volumes/.../sagemaker/runs/<id>` here is `s3://<bucket>/<prefix>/runs/<id>` there. No copying |
 # MAGIC | Authenticate | Unity Catalog **service credential** → short-lived AWS credentials. No keys |
 # MAGIC | Ship code | `src/med_notes` + `sagemaker/entry.py` + requirements as a tarball in the run folder |
-# MAGIC | Cost caps | `MaxRuntimeInSeconds` (the IAM policy also caps it at 4 h and limits instance types); the in-job budget guard. On-demand by default; spot is optional (`sagemaker_use_spot`) but can wait a long time for capacity |
+# MAGIC | Limits | None self-imposed: the job requests SageMaker's default 24 h ceiling. The IAM policy limits instance types. On-demand by default; spot is optional (`sagemaker_use_spot`) but can wait a long time for capacity |
 # MAGIC | Watch | Job status and key log lines (`START` / `DONE` / `FAIL`) stream into this notebook |
 # MAGIC | Resume | If the job restarts (e.g. a spot interruption), it skips runs that already succeeded |
 # MAGIC | Record | `sagemaker_job.json` in the run folder: billable seconds, spot savings, estimated cost |
@@ -36,10 +36,11 @@ dbutils.widgets.text("sagemaker_role_arn", "", "SageMaker execution role ARN")
 dbutils.widgets.text("sagemaker_instance_type", "ml.g5.xlarge", "Instance type")
 dbutils.widgets.dropdown("sagemaker_use_spot", "false", ["true", "false"], "Spot pricing")
 dbutils.widgets.text("sagemaker_usd_per_hour", "1.2575", "On-demand $/hour (for the cost estimate)")
+dbutils.widgets.text("sagemaker_max_runtime_hours", "24", "SageMaker max runtime, hours (24 = SageMaker's default)")
 
 w = {k: dbutils.widgets.get(k) for k in ["catalog", "schema", "job_run_id", "aws_region", "aws_service_credential",
                                          "sagemaker_s3_root", "sagemaker_role_arn", "sagemaker_instance_type",
-                                         "sagemaker_use_spot", "sagemaker_usd_per_hour"]}
+                                         "sagemaker_use_spot", "sagemaker_usd_per_hour", "sagemaker_max_runtime_hours"]}
 volume_root = f"/Volumes/{w['catalog']}/{w['schema']}/sagemaker"
 run_rel, models_rel = f"runs/{w['job_run_id']}", "models"
 run_dir = f"{volume_root}/{run_rel}"
@@ -48,9 +49,12 @@ assert s3_root.startswith("s3://") and w["sagemaker_role_arn"], "Set sagemaker_s
 
 with open(f"{run_dir}/plan.json") as f:
     plan = json.load(f)
-# Session overhead on top of the training budget: image pull, pip install, model downloads.
-max_runtime_s = min(int((plan["max_train_minutes"] + 30) * 60), 14_400)
-print(f"{len(plan['experiments'])} runs · budget {plan['max_train_minutes']:.0f} min · job cap {max_runtime_s / 3600:.1f} h")
+# No self-imposed time cap: request SageMaker's own default ceiling (24 h). The IAM policy in aws-ml-infra
+# must allow it (MaxRuntimeSeconds >= this).
+max_runtime_s = int(float(dbutils.widgets.get("sagemaker_max_runtime_hours")) * 3600)
+budget = plan["max_train_minutes"]
+print(f"{len(plan['experiments'])} runs · " + (f"budget guard {budget:.0f} min · " if budget > 0 else "no budget guard · ")
+      + f"SageMaker max runtime {max_runtime_s / 3600:.0f} h")
 
 # COMMAND ----------
 

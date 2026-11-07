@@ -91,7 +91,7 @@ databricks bundle deploy -t dev      # creates the job, starts nothing
 databricks bundle run -t dev pipeline
 
 # 2. Full run: 3 models x 3 seeds
-databricks bundle run -t dev pipeline --params experiments=group:main,max_train_minutes=150,judge_sample_size=40
+databricks bundle run -t dev pipeline --params experiments=group:main,judge_sample_size=40
 ```
 
 The pilot's `runs.minutes` and the billed cost in `05_report` replace the cost estimates in `experiments.yml` before the full run.

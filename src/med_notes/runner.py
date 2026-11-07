@@ -5,7 +5,8 @@ Contract with the CPU tasks (all files under run_dir, a UC volume folder per job
   out: <run>/predictions.parquet, <run>/losses.parquet, status.json   (read by 03_ingest_results)
 
 Production habits for a shared budget:
-  - budget guard: a run is skipped, not started, if its estimated duration would pass max_train_minutes
+  - optional budget guard (max_train_minutes > 0): a run is skipped, never interrupted, if its estimated
+    duration would pass the budget. Off by default (0).
   - failure isolation: one run crashing is recorded and the session moves on to the next
   - incremental status: status.json is rewritten after every run, so a timeout keeps finished work
 """
@@ -57,7 +58,7 @@ def run_plan(plan: dict, splits_df: pd.DataFrame, run_dir: str, use_mlflow: bool
         estimate = family_minutes.get(cfg.family, cfg.est_minutes)
         entry = {"experiment": cfg.name, "family": cfg.family, "seed": cfg.seed, "model_name": cfg.model_name,
                  "gpu": gpu, "estimated_minutes": round(estimate, 1)}
-        if elapsed + estimate > max_minutes:
+        if max_minutes > 0 and elapsed + estimate > max_minutes:  # 0 = no guard
             entry.update(status="skipped_budget", minutes=0.0)
             log(f"SKIP {cfg.name}: {elapsed:.0f} min used + ~{estimate:.0f} min > budget {max_minutes:.0f} min")
             status.append(entry)

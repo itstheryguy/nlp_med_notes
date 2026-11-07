@@ -3,12 +3,12 @@
 #   databricks bundle validate
 #   databricks bundle deploy -t dev        # creates/updates the job; starts no compute
 #   databricks bundle run -t dev pipeline  # default params = the PILOT (1 BioBART run, 10 judge examples)
-#   databricks bundle run -t dev pipeline --params experiments=group:main,max_train_minutes=150,judge_sample_size=40
+#   databricks bundle run -t dev pipeline --params experiments=group:main,judge_sample_size=40
 #
 # Compute: every Databricks task runs on serverless jobs compute. Training runs on an AWS SageMaker GPU
 # (this account can't start Serverless GPU: "AI Runtime is not available"), set up by the aws-ml-infra
-# stack. Training is capped three ways: the in-job budget guard (max_train_minutes), the SageMaker
-# MaxRuntimeInSeconds, and the IAM policy (allowed instance types, 4 h max). To train on Databricks
+# stack. No self-imposed time limits: the job requests SageMaker's default 24 h max runtime, there's no
+# Databricks task timeout, and the optional budget guard (max_train_minutes) is off by default. To train on Databricks
 # compute instead, point train_evaluate at 02_train_evaluate.py and set run_volume=pipeline.
 
 bundle:
@@ -27,8 +27,8 @@ variables:
     description: Schema for tables and volumes
     default: med_notes
   train_timeout_seconds:
-    description: Hard cap on the training task, a backstop for the budget guard. 5 h (SageMaker's own cap is 4 h).
-    default: 18000
+    description: Databricks timeout on the training task. 0 = none (the only limit is SageMaker's own max runtime).
+    default: 0
   aws_region:
     default: us-east-2
   aws_service_credential:
@@ -62,9 +62,9 @@ resources:
           default: group:pilot
         - name: eval_splits
           default: val,test
-        # The budget guard skips any run that would push the GPU session past this.
+        # Optional budget guard: skips (never interrupts) runs that would pass this many minutes. 0 = off.
         - name: max_train_minutes
-          default: "90"
+          default: "0"
         - name: judge_endpoint
           default: databricks-gpt-oss-120b
         - name: judge_sample_size
@@ -95,6 +95,9 @@ resources:
           default: "false"
         - name: sagemaker_usd_per_hour
           default: "1.2575"
+        # SageMaker's own default ceiling. Needs aws-ml-infra MaxRuntimeSeconds >= this (86400).
+        - name: sagemaker_max_runtime_hours
+          default: "24"
         - name: mlflow_experiment
           default: ${resources.experiments.med_notes.name}
         - name: job_run_id

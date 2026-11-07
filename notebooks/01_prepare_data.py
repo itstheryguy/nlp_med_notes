@@ -38,7 +38,7 @@ dbutils.widgets.text("catalog", "workspace", "Catalog")
 dbutils.widgets.text("schema", "med_notes", "Schema")
 dbutils.widgets.text("experiments", "group:pilot", "Experiments")
 dbutils.widgets.text("eval_splits", "val,test", "Eval splits")
-dbutils.widgets.text("max_train_minutes", "30", "Training budget (minutes)")
+dbutils.widgets.text("max_train_minutes", "0", "Budget guard, minutes (0 = off)")
 dbutils.widgets.text("audit_sample_size", "40", "Audit sample size (used when audit_sample is built)")
 dbutils.widgets.dropdown("refresh_data", "false", ["false", "true"], "Rebuild tables")
 dbutils.widgets.text("job_run_id", "manual", "Job run ID")
@@ -115,7 +115,8 @@ snapshot.attrs = {}  # Spark Connect attaches query metrics here, which to_parqu
 snapshot.to_parquet(f"{run_dir}/splits.parquet")
 
 est = sum(experiments[n].est_minutes for n in names)
-print(f"Plan: {len(names)} runs, estimated {est:.0f} GPU-min (budget {plan['max_train_minutes']:.0f}) → {run_dir}")
+guard = f"budget guard {plan['max_train_minutes']:.0f} min" if plan["max_train_minutes"] > 0 else "no budget guard"
+print(f"Plan: {len(names)} runs, estimated {est:.0f} GPU-min ({guard}) → {run_dir}")
 for n in names:
     c = experiments[n]
     print(f"  {n:24s} {c.model_name:32s} lr={c.learning_rate:g} ~{c.est_minutes:g} min")

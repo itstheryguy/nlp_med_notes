@@ -148,6 +148,23 @@ resources:
           notebook_task:
             notebook_path: ./notebooks/05_report.py
 
+    # Publishes a snapshot of chosen job runs for the Hugging Face Space (see notebooks/06).
+    export_space:
+      name: med_notes_export_space
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: job_run_ids
+          default: ""
+        - name: export_id
+          default: ""
+      tasks:
+        - task_key: export
+          notebook_task:
+            notebook_path: ./notebooks/06_export_space_data.py
+
 targets:
   dev:
     mode: development

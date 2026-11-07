@@ -9,14 +9,15 @@ ref = summary["reference"]
 
 st.title("Where clinical-note models go wrong")
 st.markdown(
-    "Three fine-tuned summarizers turn a doctor-patient conversation into one section of a clinical note "
+    f"{len(fam)} fine-tuned summarizers ({', '.join(label(f) for f in fam['family'])}) turn a doctor-patient "
+    "conversation into one section of a clinical note "
     "(**Symptoms / Diagnosis / History of Patient / Plan of Action**). Overlap scores like ROUGE say they're "
     "close to the clinician's note. An audit of what each note *claims* says otherwise. This Space shows "
     "both, and the specific traps behind the gap."
 )
 
 best = fam.sort_values("faithful_rate", ascending=False).iloc[0]
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4 = st.columns([1.5, 1.2, 0.8, 0.8])  # first label names the model; give it room
 c1.metric(f"Faithful notes, best model ({label(best['family'])})", f"{best['faithful_rate']:.0%}",
           help="Share of audited test notes where the LLM judge found no major error and no major omission. "
                "Mean over 3 training seeds.")
@@ -49,24 +50,33 @@ with right:
 st.subheader("What the numbers say")
 by = fam.set_index("family")
 lines = []
-if {"t5_base", "biobart"} <= set(by.index):
-    t, b = by.loc["t5_base"], by.loc["biobart"]
-    lines.append(f"**T5-base and BioBART are effectively tied.** ROUGE-L {t['rougeL']:.3f} vs {b['rougeL']:.3f}; "
-                 f"faithful {t['faithful_rate']:.0%} vs {b['faithful_rate']:.0%}, a gap about the size of the seed "
-                 f"spread (± {max(t['faithful_rate_sd'], b['faithful_rate_sd']):.0%}).")
+lo, hi = fam["rougeL"].min(), fam["rougeL"].max()
+lines.append(f"**On wording, the models are tied.** ROUGE-L spans {lo:.3f}–{hi:.3f} across all {len(fam)} models; "
+             "size and pretraining objective barely move it.")
+top = fam.sort_values("faithful_rate", ascending=False).iloc[0]
+lines.append(f"**Faithfulness is where the gap is.** The most faithful model, {label(top['family'])}, gets "
+             f"{top['faithful_rate']:.0%} of audited notes right; clinicians' own notes get {ref['faithful_rate']:.0%}.")
+safest = fam.sort_values("hallucination_rate").iloc[0]
+complete = fam.sort_values("major_omissions_per_note").iloc[0]
+if safest["family"] != complete["family"]:
+    lines.append(f"**Precision vs completeness.** {label(safest['family'])} hallucinates least "
+                 f"({safest['hallucination_rate']:.0%} of notes); {label(complete['family'])} misses least "
+                 f"({complete['major_omissions_per_note']:.2f} major omissions per note). Saying more catches more and "
+                 "risks more.")
+if {"biobart", "biobart_large"} <= set(by.index):
+    b, l = by.loc["biobart"], by.loc["biobart_large"]
+    lines.append(f"**Bigger isn't clearly better.** BioBART-large vs base: ROUGE-L {l['rougeL'] - b['rougeL']:+.3f}, "
+                 f"faithful {l['faithful_rate'] - b['faithful_rate']:+.0%}, inside the seed-to-seed spread "
+                 f"(± {max(l['faithful_rate_sd'], b['faithful_rate_sd']):.0%}).")
 if "bart_large_cnn" in by.index:
     g = by.loc["bart_large_cnn"]
     lines.append(f"**BART-large-CNN looks safest and isn't.** Only {g['hallucination_rate']:.0%} of its notes "
-                 f"hallucinate, because {g['empty_rate']:.0%} of its notes are empty: some training seeds collapse "
-                 f"into repeating the start token. It swings by ± {g['rougeL_sd']:.2f} ROUGE-L between seeds. "
-                 "See **Model traps**.")
-lines.append(f"**Even the clinicians' notes aren't 100%.** The judge rates {ref['faithful_rate']:.0%} faithful: "
-             "references sometimes include facts the dialogue excerpt doesn't contain. Models are judged against "
-             "that ceiling, not against perfection.")
+                 f"hallucinate, because {g['empty_rate']:.0%} are empty: some training seeds collapse into repeating "
+                 "the start token. See **Model traps**.")
 if "biobart" in by.index:
-    lines.append(f"**Seeds matter more than the class-project tweaks did.** BioBART's ROUGE-L varies by only "
-                 f"± {by.loc['biobart', 'rougeL_sd']:.3f} across seeds, smaller than the learning-rate and warmup "
-                 "differences the original project compared. Those differences were noise.")
+    lines.append(f"**Seeds matter more than small tweaks.** BioBART-base's ROUGE-L varies by ± "
+                 f"{by.loc['biobart', 'rougeL_sd']:.3f} across seeds, about the size of the learning-rate and warmup "
+                 "differences the original class project compared one run at a time.")
 st.markdown("\n".join(f"- {line}" for line in lines))
 
 with st.expander("Table view: every metric, mean ± sd over seeds"):

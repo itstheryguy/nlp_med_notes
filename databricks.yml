@@ -163,6 +163,8 @@ resources:
           default: ""
         - name: export_id
           default: ""
+        - name: code_version
+          default: ""
       tasks:
         - task_key: export
           notebook_task:

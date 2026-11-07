@@ -19,10 +19,15 @@ st.markdown("""
 Everything on this site is the test split.
 
 ### Training
-Three models, one recipe each, **three seeds each**, so a model's result is a mean over repetitions rather than
-one lucky run. Up to 10 epochs with early stopping on validation loss (keeping the best epoch), effective batch
-16, label smoothing 0.1, bf16, section header as part of the input. Trained on AWS SageMaker (1× A10G),
-orchestrated and tracked from Databricks (Delta tables, MLflow).
+**Four models, one recipe each, three seeds each**, so a model's result is a mean over repetitions rather than one
+lucky run: BioBART-base (166M), T5-base (223M), BioBART-large (406M), and PEGASUS-large (568M, the pretrained-only
+checkpoint). Early stopping on validation loss (keeping the best epoch) with a 10-epoch ceiling; PEGASUS-large gets
+25, because at 10 every seed was still improving (it converges around epoch 15). Effective batch 16, label smoothing
+0.1, bf16, section header as part of the input. Trained on AWS SageMaker (1× A10G, on-demand), orchestrated and
+tracked from Databricks (Delta tables, MLflow).
+
+BART-large-CNN was tried first and archived: it's tuned to news summarization, and some training seeds collapsed
+into repeating the start token (`<s><s><s>…`), which decodes to an empty note.
 
 ### Two-tier audit
 ROUGE and BERTScore measure overlap with the clinician's wording. They can't tell a fluent, wrong note from a
@@ -63,11 +68,14 @@ for m in ("precision", "recall"):
 cols = st.columns(2, gap="large")
 for col, panel in zip(cols, panels):
     col.altair_chart(chart_config(panel), width="stretch", theme=None)
-st.markdown(
-    "The answer depends on the model. The flag is a decent screen for BioBART and a weak one for the others, whose "
-    "errors mostly reuse the dialogue's own words. **A free check has to be calibrated per model before it can "
-    "replace a sampled audit.**"
-)
+ok = cal.dropna(subset=["precision", "recall"])
+if len(ok):
+    st.markdown(
+        f"Precision runs {ok['precision'].min():.0%}–{ok['precision'].max():.0%} and recall "
+        f"{ok['recall'].min():.0%}–{ok['recall'].max():.0%}: a flagged note is usually a real problem, but the free check "
+        "misses many of the judge's findings. Those are mostly wrong claims made from the dialogue's own words, which "
+        "a word-overlap check can't see. **A free check works as a screen, not as a replacement for a sampled audit.**"
+    )
 with st.expander("Table view"):
     st.dataframe(cal.assign(model=cal["family"].map(label)).set_index("model").drop(columns="family"), width="stretch")
 
@@ -83,7 +91,7 @@ st.subheader("Provenance")
 cost = summary.get("training_cost") or {}
 st.markdown(f"""
 - Snapshot exported {summary['exported_at'][:10]} from Databricks job runs `{', '.join(summary['job_run_ids'])}`
-  (`{summary['catalog']}.{summary['schema']}`).
+  (`{summary['catalog']}.{summary['schema']}`){f", code tag `{summary['code_version']}`" if summary.get('code_version') else ""}.
 - Judge: `{', '.join(summary['judge_endpoints'])}`, prompt version `{summary['judge_prompt_version']}`.
 - Training: {cost.get('billable_minutes', 0):.0f} billable GPU-minutes on `{cost.get('instance_type')}`, about ${cost.get('estimated_usd', 0):.2f}.
 - Origin: an MSDS 453 class project, rebuilt as a production pipeline.

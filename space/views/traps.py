@@ -10,7 +10,7 @@ ex_by_id = examples.set_index("example_id")
 
 st.title("Model traps")
 st.markdown(
-    "Six ways these models fail that an overlap score hides. Each trap shows how often it happens per model "
+    "Ways these models fail that an overlap score hides. Each trap shows how often it happens per model "
     "(mean over 3 seeds), with real examples. Traps marked **judge** are measured on the "
     f"{summary['n_audit_examples']} audited test examples; the rest use all {summary['n_test_examples']}."
 )
@@ -79,6 +79,10 @@ for t in TRAPS:
     for fam, g in per_run.groupby("family"):
         rows.append({"trap": t["key"], "family": fam, "rate": g["hit"].mean(), "sd": g["hit"].std(ddof=1) if len(g) > 1 else 0})
 rates = pd.DataFrame(rows)
+# Hide traps no model in this snapshot exhibits (e.g. empty notes once archived BART-large isn't included).
+present = set(rates.groupby("trap")["rate"].max().loc[lambda r: r > 0].index)
+TRAPS = [t for t in TRAPS if t["key"] in present]
+rates = rates[rates["trap"].isin(present)]
 
 # Reference rates where the trap is defined for a clinician note.
 ref_rates = {

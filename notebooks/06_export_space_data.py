@@ -38,6 +38,7 @@ dbutils.widgets.text("catalog", "workspace", "Catalog")
 dbutils.widgets.text("schema", "med_notes", "Schema")
 dbutils.widgets.text("job_run_ids", "", "Job run IDs to publish (comma-separated)")
 dbutils.widgets.text("export_id", "", "Export ID (blank = timestamp)")
+dbutils.widgets.text("code_version", "", "Git tag/commit the runs came from (shown in the Space)")
 catalog, schema = dbutils.widgets.get("catalog"), dbutils.widgets.get("schema")
 spark.sql(f"USE {catalog}.{schema}")
 ids = [i.strip() for i in dbutils.widgets.get("job_run_ids").split(",") if i.strip()]
@@ -70,7 +71,7 @@ snap = build_snapshot(
     reference_checks=table("SELECT * FROM reference_checks"),
     runs=runs,
     training_jobs=table(f"SELECT * FROM training_jobs WHERE job_run_id IN ({id_list})") if spark.catalog.tableExists("training_jobs") else None,
-    meta={"catalog": catalog, "schema": schema, "job_run_ids": ids, "judge_endpoints": endpoints,
+    meta={"catalog": catalog, "schema": schema, "job_run_ids": ids, "code_version": dbutils.widgets.get("code_version"), "judge_endpoints": endpoints,
           "judge_prompt_version": PROMPT_VERSION, "dataset": "har1/MTS_Dialogue-Clinical_Note (MTS-Dialog, CC BY 4.0)"},
 )
 

@@ -10,8 +10,10 @@
 # MAGIC | `bronze_mts_dialog` | rows exactly as the HF dataset returns them, plus a row-order `example_id` |
 # MAGIC | `silver_dialog_notes` | normalized text, `split` (train/val/test 80/10/10, stratified by section, repeated dialogues on one side) |
 # MAGIC | `audit_sample` | the fixed test examples the LLM judge scores for every run |
-# MAGIC | `pipeline/runs/<job_run_id>/plan.json` | the runs to train, the eval splits, the GPU budget |
-# MAGIC | `pipeline/runs/<job_run_id>/splits.parquet` | a snapshot of `silver_dialog_notes` for the GPU task (it has no Spark) |
+# MAGIC | `<run_volume>/runs/<job_run_id>/plan.json` | the runs to train, the eval splits, the training budget |
+# MAGIC | `<run_volume>/runs/<job_run_id>/splits.parquet` | a snapshot of `silver_dialog_notes` for the training task (it has no Spark) |
+# MAGIC
+# MAGIC `run_volume` is `sagemaker` (the S3-backed external volume SageMaker also reads) or `pipeline` (training on Databricks compute).
 # MAGIC
 # MAGIC Tables are only rebuilt when `refresh_data` is `true`, so an upstream dataset change can't silently
 # MAGIC reshuffle the splits between runs.
@@ -40,6 +42,7 @@ dbutils.widgets.text("max_train_minutes", "30", "Training budget (minutes)")
 dbutils.widgets.text("audit_sample_size", "40", "Audit sample size (used when audit_sample is built)")
 dbutils.widgets.dropdown("refresh_data", "false", ["false", "true"], "Rebuild tables")
 dbutils.widgets.text("job_run_id", "manual", "Job run ID")
+dbutils.widgets.dropdown("run_volume", "sagemaker", ["sagemaker", "pipeline"], "Run folder volume")
 
 catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
@@ -95,14 +98,15 @@ experiments = load_experiments("../configs/experiments.yml")
 names = select_experiments(experiments, dbutils.widgets.get("experiments"))
 eval_splits = [s.strip() for s in dbutils.widgets.get("eval_splits").split(",") if s.strip()]
 
-run_dir = f"/Volumes/{catalog}/{schema}/pipeline/runs/{job_run_id}"
+volume_root = f"/Volumes/{catalog}/{schema}/{dbutils.widgets.get('run_volume')}"
+run_dir = f"{volume_root}/runs/{job_run_id}"
 os.makedirs(run_dir, exist_ok=True)
 plan = {
     "job_run_id": job_run_id,
     "experiments": [experiments[n].to_dict() for n in names],
     "eval_splits": eval_splits,
     "max_train_minutes": float(dbutils.widgets.get("max_train_minutes")),
-    "models_dir": f"/Volumes/{catalog}/{schema}/models",
+    "models_dir": f"{volume_root}/models",
 }
 with open(f"{run_dir}/plan.json", "w") as f:
     json.dump(plan, f, indent=2)
@@ -111,7 +115,7 @@ snapshot.attrs = {}  # Spark Connect attaches query metrics here, which to_parqu
 snapshot.to_parquet(f"{run_dir}/splits.parquet")
 
 est = sum(experiments[n].est_minutes for n in names)
-print(f"Plan: {len(names)} runs, estimated {est:.0f} GPU min (budget {plan['max_train_minutes']:.0f}) → {run_dir}")
+print(f"Plan: {len(names)} runs, estimated {est:.0f} GPU-min (budget {plan['max_train_minutes']:.0f}) → {run_dir}")
 for n in names:
     c = experiments[n]
     print(f"  {n:24s} {c.model_name:32s} lr={c.learning_rate:g} ~{c.est_minutes:g} min")

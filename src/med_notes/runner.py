@@ -34,7 +34,9 @@ def _write_json(path: str, obj) -> None:
 
 
 def run_plan(plan: dict, splits_df: pd.DataFrame, run_dir: str, use_mlflow: bool = False, log=print,
-             bertscore_model: str | None = None) -> list[dict]:
+             bertscore_model: str | None = None, on_run_complete=None) -> list[dict]:
+    """on_run_complete(entry, out_dir) is called after each run's status is written (succeeded, failed, or
+    skipped), e.g. to upload that run's files when run_dir is local disk inside a remote training job."""
     from .evaluation import generate, score, summarize
     from .train import loss_history, train, truncation_stats
 
@@ -44,7 +46,8 @@ def run_plan(plan: dict, splits_df: pd.DataFrame, run_dir: str, use_mlflow: bool
     max_minutes = float(plan["max_train_minutes"])
     session_start = time.time()
     family_minutes: dict[str, float] = {}  # measured duration of the first finished run per family
-    best_by_family: dict[str, float] = {}  # lowest val loss saved per family this session
+    # lowest val loss saved per family; a resumed session starts from what earlier sessions saved
+    best_by_family: dict[str, float] = dict(plan.get("best_val_loss_by_family", {}))
     status: list[dict] = []
     status_path = os.path.join(run_dir, "status.json")
 
@@ -59,6 +62,8 @@ def run_plan(plan: dict, splits_df: pd.DataFrame, run_dir: str, use_mlflow: bool
             log(f"SKIP {cfg.name}: {elapsed:.0f} min used + ~{estimate:.0f} min > budget {max_minutes:.0f} min")
             status.append(entry)
             _write_json(status_path, {"train_minutes_used": round(elapsed, 2), "runs": status})
+            if on_run_complete:
+                on_run_complete(entry, None)
             continue
 
         run_start = time.time()
@@ -137,5 +142,7 @@ def run_plan(plan: dict, splits_df: pd.DataFrame, run_dir: str, use_mlflow: bool
         entry["finished_at"] = datetime.now(timezone.utc).isoformat()
         status.append(entry)
         _write_json(status_path, {"train_minutes_used": round((time.time() - session_start) / 60, 2), "runs": status})
+        if on_run_complete:
+            on_run_complete(entry, out_dir)
 
     return status

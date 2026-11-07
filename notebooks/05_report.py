@@ -120,6 +120,16 @@ if usd_per_hour > 0:
 
 # COMMAND ----------
 
+# SageMaker training: what AWS billed (BillableTimeInSeconds already reflects spot savings).
+if spark.catalog.tableExists("training_jobs"):
+    display(spark.sql(f"""
+        SELECT training_job_name, status, instance_type, spot, round(training_seconds / 60, 1) AS training_minutes,
+               round(billable_seconds / 60, 1) AS billable_minutes, spot_savings_pct, estimated_usd
+        FROM training_jobs WHERE job_run_id = '{job_run_id}'
+    """))
+
+# COMMAND ----------
+
 job_id = dbutils.widgets.get("job_id")
 if job_id:
     try:

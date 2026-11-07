@@ -51,7 +51,8 @@ dbutils.widgets.text("mlflow_experiment", "", "MLflow experiment path (blank = p
 
 catalog, schema = dbutils.widgets.get("catalog"), dbutils.widgets.get("schema")
 job_run_id = dbutils.widgets.get("job_run_id")
-run_dir = f"/Volumes/{catalog}/{schema}/pipeline/runs/{job_run_id}"
+dbutils.widgets.dropdown("run_volume", "pipeline", ["sagemaker", "pipeline"], "Run folder volume")
+run_dir = f"/Volumes/{catalog}/{schema}/{dbutils.widgets.get('run_volume')}/runs/{job_run_id}"
 
 try:
     os.environ["HF_TOKEN"] = dbutils.secrets.get("hf", "token")

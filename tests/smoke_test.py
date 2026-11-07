@@ -24,7 +24,9 @@ from med_notes.config import load_experiments, select_experiments  # noqa: E402
 from med_notes.data import build_silver, get_split, load_raw  # noqa: E402
 from med_notes.ingest import load_run_dir, reference_tier1  # noqa: E402
 from med_notes.judge import Judge, _text_from_content, parse_verdict, results_frame, summarize_verdict  # noqa: E402
+from med_notes.remote import LocalStore, run_remote  # noqa: E402
 from med_notes.runner import run_plan  # noqa: E402
+from med_notes.sagemaker_job import build_sourcedir, job_name, summarize_job, training_job_request  # noqa: E402
 
 
 def check_configs():
@@ -132,10 +134,60 @@ def check_runner_and_ingest(exps, silver):
     print("runner + ingest ok:", got)
 
 
+def check_remote(exps, silver):
+    """SageMaker path without AWS: a LocalStore stands in for the S3 prefix behind the volume."""
+    import io
+    import tarfile
+
+    small = pd.concat([get_split(silver, "train").head(16), get_split(silver, "val").head(6),
+                       get_split(silver, "test").head(6)], ignore_index=True)
+    tiny = dict(max_source_length=96, max_target_length=32, max_epochs=1, early_stopping_patience=1,
+                batch_size=4, grad_accum=1, generation={"max_new_tokens": 8, "num_beams": 2}, est_minutes=1,
+                model_name="hf-internal-testing/tiny-random-BartForConditionalGeneration")
+    runs = [dataclasses.replace(exps[n], **tiny) for n in ("biobart_s13", "biobart_s42")]
+    with tempfile.TemporaryDirectory() as tmp:
+        store = LocalStore(os.path.join(tmp, "s3"))
+        plan = {"job_run_id": "r1", "experiments": [c.to_dict() for c in runs], "eval_splits": ["val"],
+                "max_train_minutes": 60, "models_dir": "/Volumes/c/s/sagemaker/models"}
+        store.put("runs/r1/plan.json", json.dumps(plan).encode())
+        buf = io.BytesIO(); small.to_parquet(buf); store.put("runs/r1/splits.parquet", buf.getvalue())
+        # A previous (interrupted) session already finished biobart_s13.
+        store.put("runs/r1/status.json", json.dumps({"runs": [{"experiment": "biobart_s13", "family": "biobart",
+                  "seed": 13, "status": "succeeded", "minutes": 1.0, "best_val_loss": 99.0, "model_path": None}]}).encode())
+
+        status = run_remote(store, "runs/r1", "models", "/Volumes/c/s/sagemaker", os.path.join(tmp, "work"),
+                            log=lambda m: None, bertscore_model="distilbert-base-uncased")
+        assert [r["experiment"] for r in status] == ["biobart_s13", "biobart_s42"], status
+        published = json.loads(store.get("runs/r1/status.json"))["runs"]
+        assert [r["status"] for r in published] == ["succeeded", "succeeded"]
+        assert published[1]["model_path"] == "/Volumes/c/s/sagemaker/models/biobart"  # Databricks' view of the path
+        assert store.get("runs/r1/biobart_s42/predictions.parquet") is not None
+        assert store.get("models/biobart/run_info.json") is not None
+        assert store.get("runs/r1/biobart_s13/predictions.parquet") is None  # not re-run
+
+    tar = tarfile.open(fileobj=io.BytesIO(build_sourcedir(str(ROOT))))
+    names = tar.getnames()
+    assert {"entry.py", "requirements.txt", "med_notes/remote.py"} <= set(names) and not any("__pycache__" in n for n in names)
+    name = job_name("nlp-med-notes", "1234567890123")
+    assert len(name) <= 63 and name.replace("-", "").isalnum()
+    req = training_job_request(name=name, image="img", role_arn="arn:role", instance_type="ml.g5.xlarge",
+                               s3_root="s3://b/p", volume_root="/Volumes/c/s/sagemaker", run_rel="runs/1",
+                               models_rel="models", sourcedir_s3="s3://b/p/runs/1/code/sourcedir.tar.gz",
+                               max_runtime_s=7200, use_spot=True, region="us-east-2", tags={"k": 1})
+    assert req["StoppingCondition"] == {"MaxRuntimeInSeconds": 7200, "MaxWaitTimeInSeconds": 10800}
+    assert all(isinstance(v, str) for v in [*req["HyperParameters"].values(), *req["Environment"].values()])
+    cost = summarize_job({"TrainingJobName": name, "TrainingJobStatus": "Completed", "EnableManagedSpotTraining": True,
+                          "ResourceConfig": {"InstanceType": "ml.g5.xlarge"}, "TrainingTimeInSeconds": 1000,
+                          "BillableTimeInSeconds": 300}, 1.2575)
+    assert cost["spot_savings_pct"] == 70.0 and cost["estimated_usd"] == round(300 / 3600 * 1.2575, 4)
+    print("remote ok: resume skips finished runs, per-run upload, model path mapping, tarball, job request, cost")
+
+
 if __name__ == "__main__":
     exps = check_configs()
     silver = check_data()
     check_audit(silver)
     check_judge()
     check_runner_and_ingest(exps, silver)
+    check_remote(exps, silver)
     print("SMOKE TEST PASSED")

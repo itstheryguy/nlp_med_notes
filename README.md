@@ -1,150 +1,150 @@
-# nlp_med_notes: doctor-patient dialogue → clinical note, on Databricks
+# nlp_med_notes: clinical note generation, audited for faithfulness
 
-Fine-tunes three seq2seq models to turn a doctor-patient conversation from [MTS-Dialog](https://huggingface.co/datasets/har1/MTS_Dialogue-Clinical_Note) into a structured note section (`Symptoms / Diagnosis / History of Patient / Plan of Action`), then audits the notes for hallucinations. It runs as one Databricks job on serverless compute, with a GPU budget guard.
+Fine-tunes seq2seq models to write one section of a clinical note (`Symptoms / Diagnosis / History of Patient / Plan of Action`) from a doctor-patient conversation, then audits every note for what overlap metrics miss: invented facts, wrong fields, and dropped findings.
 
-It began as an MSDS 453 class project in Google Colab ([`nlp final project/previous work/`](nlp%20final%20project/previous%20work/)). That work compared ten single-run hyperparameter tweaks by ROUGE. The tweaks moved the metrics less than run-to-run noise, and the real failures (wrong medication placement, symptoms escalated into diagnoses) only appeared in manual review. This version is built around those two lessons: **repeat runs instead of tweaks, and measure faithfulness directly.**
+**[Live app](https://huggingface.co/spaces/itstheryguy/clinical-note-summarization)** · [Infrastructure repo (SageMaker backend)](https://github.com/itstheryguy/aws-ml-infra) · Data: [MTS-Dialog](https://github.com/abachaa/MTS-Dialog) (CC BY 4.0)
 
-**Live app:** [huggingface.co/spaces/itstheryguy/clinical-note-summarization](https://huggingface.co/spaces/itstheryguy/clinical-note-summarization), built from the prod run tagged `results-v1`.
+- **Databricks** runs the pipeline as one job: frozen data splits in Delta, a training step, a two-tier audit, MLflow tracking, and a report. Every task runs on serverless compute.
+- **AWS SageMaker** does the GPU training (1× A10G, on-demand). Databricks starts and watches the job through a Unity Catalog service credential, and both sides read and write the same files through an S3-backed external volume. No access keys.
+- **Two LLM judges** (open-weight models served inside Databricks) audit a fixed sample of notes, and are themselves checked for self-consistency and agreement with each other.
+- **Hugging Face** hosts the app: a Streamlit site that runs entirely in the browser (stlite), built from a versioned snapshot of the production run.
 
-**Roadmap:** ✅ Databricks pipeline → ✅ model comparison (4 models × 3 seeds, prod) → ✅ Hugging Face Space
+> **Status:** complete. Results below are from the production run tagged `results-v1.1`: 4 models × 3 training seeds, 132 test conversations, about $1.80 of GPU time.
 
-## Design
+## Results
+
+Test split, mean over 3 seeds. "Faithful" means the primary judge found no major error and no major omission in the note. The judge audits the same 40 test conversations for every run.
+
+| | T5-base | BioBART-large | PEGASUS-large | BioBART-base | Clinician notes |
+|---|---|---|---|---|---|
+| Parameters | 223M | 406M | 568M | 166M | n/a |
+| ROUGE-L vs clinician note | 0.642 ± .005 | 0.641 ± .009 | 0.642 ± .005 | 0.631 ± .002 | n/a |
+| Follows the 4-field template | 96.7% | 98.0% | 99.7% | 98.0% | 89.4% |
+| **Faithful**: judge 1 (gpt-oss-120b) | **23%** | 16% | 16% | 12% | **75%** |
+| **Faithful**: judge 2 (Qwen3-Next-80B) | **19%** | 18% | 13% | 11% | 73% |
+| Contains a hallucinated claim | 23% | 32% | 25% | 32% | 30% |
+| Training time per run (A10G) | 4 min | 5 min | 16 min | 3 min | n/a |
+
+**What it shows:**
+- **Fluent isn't faithful.** All four models score the same ROUGE-L (0.631–0.642). Measured by what their notes *claim*, the best is faithful on about a fifth of conversations, against three quarters for clinicians' own notes.
+- **Size didn't buy faithfulness.** BioBART-large and PEGASUS-large don't beat T5-base, which is the most faithful model at about 40% of PEGASUS's size and a quarter of its training time.
+- **The common failure is omission, not invention.** Models write "N/A" for fields the conversation covers, especially *pertinent negatives* ("no history of diabetes"), which clinicians record and models drop.
+- **Seed spread is about the size of the differences.** The original class project compared learning rates one run each; differences of that size are within seed noise here.
+- **The rubric matters.** Making the judge's omission rule explicit (prompt v2) roughly halved every faithful rate and reordered the models. Comparisons under one fixed rubric hold up; absolute rates depend on the rubric.
+
+The [app](https://huggingface.co/spaces/itstheryguy/clinical-note-summarization) has every note, the judges' claim-level verdicts, six recurring "traps" with real examples, and the judge-reliability checks.
+
+## How it works
 
 ```mermaid
 flowchart LR
-    hf[("HF: MTS-Dialog")] --> prep
-    subgraph cpu1["Serverless CPU"]
-        prep["01 prepare_data<br/>frozen splits + audit sample<br/>plan.json"]
+    hf[("MTS-Dialog")] --> prep
+    subgraph dbx["Databricks job (serverless)"]
+        prep["prepare_data<br/>frozen splits, audit sample,<br/>run plan"]
+        train["train_sagemaker<br/>start + watch the job"]
+        ingest["ingest_results<br/>tier-1 audit on every note,<br/>MLflow"]
+        judge["judge_audit<br/>tier-2: two LLM judges<br/>on a fixed sample"]
+        report["report"]
+        prep --> train --> ingest --> judge --> report
     end
-    subgraph gpu["Serverless GPU (1x A10), one session"]
-        train["02 train_evaluate<br/>every run back to back<br/>budget guard"]
+    subgraph aws["AWS"]
+        sm["SageMaker training job<br/>ml.g5.xlarge, all runs<br/>back to back"]
+        s3[("S3")]
     end
-    subgraph cpu2["Serverless CPU"]
-        ingest["03 ingest_results<br/>tier-1 audit on every note"]
-        judge["04 judge_audit<br/>tier-2 LLM judge on a sample"]
-        report["05 report"]
-    end
-    prep -- "volume: plan.json, splits.parquet" --> train
-    train -- "volume: predictions, losses, status.json" --> ingest
-    train --> models[("models volume<br/>best seed per model")]
-    train --> mlflow[["MLflow"]]
-    ingest --> judge --> report
-    fm{{"Foundation Model API<br/>gpt-oss-120b"}} <--> judge
-    models -.-> space["HF Space"]
+    vol[("UC external volume")] <--> s3
+    prep -- "plan, splits" --> vol
+    train -- "service credential" --> sm
+    sm <--> s3
+    vol -- "predictions, losses, status" --> ingest
+    fm{{"Foundation Model API<br/>gpt-oss-120b, Qwen3-Next-80B"}} <--> judge
+    report --> exp["export_space job<br/>versioned snapshot"] --> space["Hugging Face Space"]
 ```
 
-### Experiments: one recipe per model, repeated over seeds
+**Training.** One recipe per model, repeated over seeds (`configs/experiments.yml`). Up to 10 epochs with early stopping on validation loss, keeping the best epoch. PEGASUS-large gets a 25-epoch ceiling because at 10 every seed was still improving; it converges around epoch 15. Effective batch 16, label smoothing 0.1, bf16, and the section header as part of the input. All runs share one SageMaker job, so startup is paid once. Each run's results upload as it finishes, and a restarted job skips runs that already succeeded.
 
-`configs/experiments.yml` holds one entry per model, and its `seeds` list expands it into runs (`biobart_s13`, `biobart_s42`, ...). Each model is reported as mean ± std over its seeds.
+**Two-tier audit.** ROUGE and BERTScore are kept, but they can't tell a fluent hallucination from a faithful note.
 
-| Model | Why it's here | LR |
+| Tier | Runs on | Checks |
 |---|---|---|
-| `GanjinZero/biobart-v2-base` (166M) | Pretrained on biomedical text. Small enough to serve from a CPU-only Space | 5e-5 |
-| `facebook/bart-large-cnn` (406M) | General summarizer, the largest model | 3e-5 |
-| `google-t5/t5-base` (223M) | A different architecture and pretraining | 3e-4 (T5 needs ~10× BART's LR) |
+| 1. Deterministic (`audit.py`) | every note, free | 4-field template; N/A agreement per field; **grounding**: words and numbers (including spoken numbers, "nineteen sixty eight" → 1968) that never appear in the dialogue |
+| 2. LLM judges (`judge.py`) | fixed 40-conversation sample | every claim labeled supported / unsupported / contradicted / misplaced, with clinical severity; major omissions, including pertinent negatives |
 
-The recipe is shared across models:
-- **Training length:** up to 10 epochs, with early stopping on validation loss (patience 2), keeping the best epoch.
-- **Batch and regularization:** effective batch 16, label smoothing 0.1, bf16.
-- **Inputs:** the section header goes in with the dialogue, since the section to write is known at inference time.
-- **Generation:** defaults are overridden. bart-large-cnn ships `no_repeat_ngram_size=3`, which stops it from writing "N/A." in more than one field.
+**Making the judge trustworthy.** The judge only *labels*; the 1–5 score and faithful/not are computed from the labels by a fixed rule, so they can't disagree. It runs at temperature 0. Notes are judged in a canonical form and cached by conversation + note + judge + prompt version, so identical notes always get identical verdicts. Two checks measure the judge itself:
 
-### Audit: free checks on every note, an LLM judge on a sample
+| | gpt-oss-120b | Qwen3-Next-80B |
+|---|---|---|
+| Agrees with itself (faithful/not, 40 deliberate re-judges) | 95% | 90% |
+| Agreement between the two judges (480 notes) | 88%, Cohen's κ 0.55 (moderate) | |
 
-ROUGE and BERTScore are still computed, but they can't tell a fluent hallucination from a faithful note. Faithfulness is audited in two tiers:
+The free tier-1 flag catches 39–63% of the judge's hallucinations with 68–88% precision, depending on the model. That makes it a useful screen on every note, but not a replacement for a sampled audit.
 
-| Tier | Runs on | Cost | Checks |
-|---|---|---|---|
-| 1, `audit.py` | every note | free (CPU) | template compliance; N/A agreement per field; **grounding**: words and numbers in the note that never appear in the dialogue |
-| 2, `judge.py` | fixed 40-example test sample, same for every run | pay-per-token | every claim labeled supported / unsupported / contradicted / misplaced, with clinical severity; important omissions |
+## Design decisions
 
-- **The clinician's reference notes go through both tiers.** That's the ceiling, and it shows how often each check objects to a human-written note. Tier 1 flags 48.6% of references, mostly clinical paraphrase ("I don't smoke" → "nonsmoker"). The flag is a screen to compare between models, not a verdict.
-- **The report measures the flag's precision and recall against the judge.** The production idea: a free check screens every note, and a model judge audits a sample to keep the screen honest. A frontier model is never called on every output.
-- **The judge is an open-weight model served inside Databricks** (`databricks-gpt-oss-120b`), so audit data stays on the platform. In a test with an invented allergy, it flagged the made-up "sulfa". Any chat endpoint works through the `judge_endpoint` parameter. Claude endpoints are currently disabled on this workspace.
-
-### Cost and efficiency controls
-
-- **One GPU session for all runs,** so startup and package install are paid once. Everything else runs on serverless CPU.
-- **Budget guard:** a run is skipped, never started, when `elapsed + estimate > max_train_minutes`. The estimate is the model's `est_minutes` until its first seed finishes, then that run's measured time. The GPU task also has a 3-hour hard timeout and no retries.
-- **Failure isolation and incremental status:** one crashed run doesn't end the session, and `status.json` is rewritten after every run, so a timeout keeps finished work.
-- **Judge caps:** `judge_sample_size` (examples per run) and `judge_max_calls` (whole task). Token counts are stored per call.
-- **Monitoring:** the report shows actual vs estimated minutes per run and an estimated cost. `v_job_run_costs` joins `system.billing.usage` with list prices to show what each job run was actually billed, once billing data lands.
-
-## Tables (`workspace.med_notes_dev` in dev)
-
-| Table | Grain |
-|---|---|
-| `silver_dialog_notes` | one row per example: text, frozen `split` (train 1038 / val 131 / test 132, stratified by section, repeated dialogues kept on one side) |
-| `audit_sample` | the 40 test examples the judge scores for every run |
-| `runs` | one row per run per job run: status, minutes, best epoch, val/test metrics, config |
-| `predictions` | one row per run per example: note, reference, scores, tier-1 checks |
-| `judge_results` | one row per judged note: claim counts by label, severity, score, raw verdict JSON |
-| `training_losses`, `reference_checks` | loss curves; tier-1 checks on the references |
-
-Every write is keyed by `job_run_id` and idempotent.
+- **Repeat runs, not tweaks.** Each model is trained with 3 seeds and reported as mean ± sd. The class version compared single runs with different learning rates; the seed spread here is as large as those differences.
+- **Frozen splits.** Train / val / test (1,038 / 131 / 132) are computed once, stratified by section, with repeated dialogues kept on one side, and stored in Delta, so every run and the app see the same rows.
+- **Databricks orchestrates, AWS supplies the GPU.** This workspace can't start Databricks Serverless GPU. Instead of moving the project elsewhere, training is delegated to SageMaker and everything else stays in Databricks. The file contract (`plan.json` in, `predictions` / `losses` / `status.json` out) is the only coupling, so the training backend can be swapped.
+- **No self-imposed time limits on training.** The job requests SageMaker's default 24 h maximum. Cost control comes from IAM: the Databricks role can only start allowed instance types.
+- **Open-weight judges inside Databricks**, so audit data never leaves the platform, and no frontier model is called on every output.
+- **Idempotent writes.** Every table write is keyed by `job_run_id`, so re-running a task never duplicates results.
+- **The app reads a snapshot, not Databricks.** The public Space holds no credentials and keeps working after the workspace is gone. Each snapshot records the job run and git tag it came from.
 
 ## Run it
 
+Requires a Databricks workspace with Unity Catalog, and the AWS stack from [aws-ml-infra](https://github.com/itstheryguy/aws-ml-infra) (an S3 bucket, a SageMaker role, and two Unity Catalog credentials). Point the bundle at your own resources with variable overrides, so account details stay out of the repo:
+
 ```bash
-databricks bundle validate
-databricks bundle deploy -t dev      # creates the job, starts nothing
+cat > .databricks/bundle/dev/variable-overrides.json <<'EOF'
+{"sagemaker_bucket": "<your bucket>", "sagemaker_role_arn": "<your SageMaker execution role ARN>"}
+EOF
 
-# 1. Pilot (the job's default parameters): one BioBART run, 10 judged examples, 30-min GPU cap
-databricks bundle run -t dev pipeline
-
-# 2. Full run: 3 models x 3 seeds
+databricks bundle deploy -t dev
+databricks bundle run -t dev pipeline --params experiments=group:pilot           # one run, to check cost and timing
 databricks bundle run -t dev pipeline --params experiments=group:main,judge_sample_size=40
 ```
 
-The pilot's `runs.minutes` and the billed cost in `05_report` replace the cost estimates in `experiments.yml` before the full run.
+Results land in the `med_notes_dev` schema (`runs`, `predictions`, `judge_results`, `judge_consistency`), in the MLflow experiment, and in the `report` task's output. `-t prod` writes to `med_notes`.
 
-**Interactively:** run `00` and `01` on serverless. Then attach `02_train_evaluate` to **Serverless GPU (A10)** and run it with `job_run_id=manual`.
-
-**Local smoke test** (CPU, a few minutes). It covers config expansion, splits, both audit tiers (with a fake endpoint), and the runner's budget guard, failure isolation and best-seed saving using tiny random models:
+**Publish the app** from a prod run:
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install torch transformers datasets accelerate rouge_score bert_score sentencepiece pyyaml pandas pyarrow databricks-sdk
-python tests/smoke_test.py
-```
-
-## Hugging Face Space (`space/`)
-
-A Streamlit app with an overview, a note explorer, a "model traps" page and the methods, published as a **static**
-Hugging Face Space: [stlite](https://github.com/whitphx/stlite) runs Streamlit in the browser (`space/index.html`),
-so the free tier works and there's no server. It reads a snapshot (JSON), not Databricks: the public Space holds no
-credentials and keeps working after the workspace is gone.
-
-```bash
-# 1. Export a snapshot of chosen job runs (prod for the published version)
-databricks bundle run -t dev export_space --params job_run_ids=<run1>,<run2>,export_id=<name>
-# 2. Pull the JSON + summary into the Space folder
+databricks bundle run -t prod export_space --params job_run_ids=<id>,export_id=<name>,code_version=<git tag>
 for f in examples.json notes.json runs.json summary.json; do
-  databricks fs cp --overwrite dbfs:/Volumes/workspace/<schema>/pipeline/space_export/<name>/$f space/data/$f; done
-# 3. Test headless with regular Streamlit, then check the static build the way HF serves it
-cd space && python test_app.py && python -m http.server 8600   # open http://localhost:8600/index.html
-```
-
-Publish a new snapshot (after step 3):
-
-```bash
+  databricks fs cp --overwrite dbfs:/Volumes/workspace/med_notes/pipeline/space_export/<name>/$f space/data/$f; done
+python space/test_app.py                       # every page headless + every note card
+(cd space && python -m http.server 8600)       # the static build as Hugging Face serves it: localhost:8600/index.html
 hf upload itstheryguy/clinical-note-summarization space . --repo-type space \
   --exclude "__pycache__/*" --exclude "*/__pycache__/*" --exclude "test_app.py"
 ```
+
+**Local tests** (CPU, about 20 s): `python tests/smoke_test.py` covers splits, both audit tiers with a fake endpoint, the judge cache, and the training runner with tiny models. `python space/test_app.py` runs every page of the app headless and renders every note card.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
-| `databricks.yml` | the `med_notes_pipeline` job, its MLflow experiment, and dev/prod targets |
-| `configs/experiments.yml` | models, recipes, seeds, run-time estimates |
-| `notebooks/00–05` | thin task notebooks |
-| `src/med_notes/` | `data`, `train`, `evaluation`, `audit` (tier 1), `judge` (tier 2), `runner` (GPU session), `ingest` |
-| `requirements-train.txt` | installed by the GPU task (a no-op where the AI environment already has them) |
+| `databricks.yml` | the pipeline and export jobs, MLflow experiment, dev/prod targets |
+| `configs/experiments.yml` | models, recipes, seeds; archived recipes kept with notes on why |
+| `notebooks/` | thin task notebooks: `00_setup` … `05_report`, `02_train_sagemaker`, `06_export_space_data` |
+| `src/med_notes/` | `data`, `train`, `evaluation`, `runner` (training session), `remote` + `sagemaker_job` (SageMaker), `audit` (tier 1), `judge` + `judging` (tier 2), `ingest`, `export` |
+| `sagemaker/entry.py` | SageMaker entry point |
+| `space/` | the Hugging Face app (Streamlit via stlite) and its data snapshot |
+| `tests/smoke_test.py` | local end-to-end checks |
 
-## Known limitations
+## What didn't work
 
-- **1,301 examples** is small, so the seed spread will be wide. Synthetic data or a larger dataset is a later phase.
-- **Tier-1 grounding is lexical.** Synonym-aware matching (scispaCy/UMLS) would cut its false positives.
-- **One judge model, no human labels.** Agreement between judges, or a small clinician-labeled set, would validate it.
-- Serverless GPU notebook tasks (`compute.hardware_accelerator`) are a Public Preview feature.
+- **BART-large-CNN** was the original large model. It's tuned to news summarization, and some training seeds collapsed into repeating the start token (`<s><s><s>…`), which decodes to an empty note; 47% of its notes were empty. A minimum decode length didn't fix it. It's archived in `configs/experiments.yml`.
+- **Training on serverless CPU** took about 45 s per optimizer step and ran out of memory, which is what led to the SageMaker backend.
+
+## Limitations
+
+- **1,301 conversations** is small; the seed spread is a large share of the differences between models.
+- **Tier-1 grounding is lexical.** Clinical paraphrase ("high blood pressure" → "hypertension") is flagged; synonym-aware matching (UMLS) would cut false positives.
+- **No clinician-labeled audit.** The two judges agree moderately (κ 0.55); a small human-labeled set would calibrate them.
+
+## Origin
+
+This started as an MSDS 453 class project in Google Colab: three models compared through ten single-run hyperparameter tweaks scored by ROUGE. The tweaks moved the metrics less than run-to-run noise, and the real failures only showed up in manual review. This version is built around those two lessons: **repeat runs instead of tweaks, and measure faithfulness directly.**
+
+## License
+
+Code: [MIT](LICENSE). Data: [MTS-Dialog](https://github.com/abachaa/MTS-Dialog), Ben Abacha et al. (2023), CC BY 4.0.

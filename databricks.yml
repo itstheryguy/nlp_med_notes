@@ -34,12 +34,13 @@ variables:
   aws_service_credential:
     description: Unity Catalog service credential for SageMaker API calls (aws-ml-infra)
     default: aws-ml-training
+  # Account-specific: set in .databricks/bundle/<target>/variable-overrides.json (gitignored), not here.
   sagemaker_bucket:
     description: aws-ml-infra stack output BucketName
-    default: ml-training-<aws-account-id>-us-east-2
+    default: "<set in variable-overrides.json>"
   sagemaker_role_arn:
     description: aws-ml-infra stack output SageMakerExecutionRoleArn
-    default: arn:aws:iam::<aws-account-id>:role/sagemaker-ml-training-execution
+    default: "<set in variable-overrides.json>"
   sagemaker_instance_type:
     default: ml.g5.xlarge
 

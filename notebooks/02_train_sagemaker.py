@@ -3,8 +3,8 @@
 # MAGIC # 02 · Train and evaluate on SageMaker (AWS GPU)
 # MAGIC
 # MAGIC Runs the same `runner.run_plan` as `02_train_evaluate`, inside a SageMaker training job on an A10G
-# MAGIC (`ml.g5.xlarge`). This workspace can't start Serverless GPU; the AWS side is set up by the
-# MAGIC [`aws-ml-infra`](../../aws-ml-infra) stack.
+# MAGIC (`ml.g5.xlarge`). This workspace can't start Serverless GPU. The AWS side (S3 bucket, SageMaker role,
+# MAGIC Unity Catalog credentials) comes from a CloudFormation stack kept in a separate private repo (`aws-ml-infra`).
 # MAGIC
 # MAGIC | Step | How |
 # MAGIC |---|---|

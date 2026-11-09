@@ -2,7 +2,7 @@
 
 Fine-tunes seq2seq models to write one section of a clinical note (`Symptoms / Diagnosis / History of Patient / Plan of Action`) from a doctor-patient conversation, then audits every note for what overlap metrics miss: invented facts, wrong fields, and dropped findings.
 
-**[Live app](https://huggingface.co/spaces/itstheryguy/clinical-note-summarization)** · [Infrastructure repo (SageMaker backend)](https://github.com/itstheryguy/aws-ml-infra) · Data: [MTS-Dialog](https://github.com/abachaa/MTS-Dialog) (CC BY 4.0)
+**[Live app](https://huggingface.co/spaces/itstheryguy/clinical-note-summarization)** · Data: [MTS-Dialog](https://github.com/abachaa/MTS-Dialog) (CC BY 4.0)
 
 - **Databricks** runs the pipeline as one job: frozen data splits in Delta, a training step, a two-tier audit, MLflow tracking, and a report. Every task runs on serverless compute.
 - **AWS SageMaker** does the GPU training (1× A10G, on-demand). Databricks starts and watches the job through a Unity Catalog service credential, and both sides read and write the same files through an S3-backed external volume. No access keys.
@@ -90,7 +90,13 @@ The free tier-1 flag catches 39–63% of the judge's hallucinations with 68–88
 
 ## Run it
 
-Requires a Databricks workspace with Unity Catalog, and the AWS stack from [aws-ml-infra](https://github.com/itstheryguy/aws-ml-infra) (an S3 bucket, a SageMaker role, and two Unity Catalog credentials). Point the bundle at your own resources with variable overrides, so account details stay out of the repo:
+Requires a Databricks workspace with Unity Catalog, plus these AWS resources. Mine are defined in CloudFormation in a separate, private infrastructure repo; any equivalent setup works:
+
+- an **S3 bucket**, registered in Unity Catalog as an **external location** through a **storage credential** (serverless compute can only reach S3 through Unity Catalog)
+- a **SageMaker execution role** with read/write on that bucket
+- a **Unity Catalog service credential** for an IAM role that can start, describe, and stop SageMaker training jobs and pass the execution role
+
+Point the bundle at your own resources with variable overrides, so account details stay out of the repo:
 
 ```bash
 cat > .databricks/bundle/dev/variable-overrides.json <<'EOF'

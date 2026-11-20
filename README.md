@@ -32,7 +32,7 @@ Test split, mean over 3 seeds. "Faithful" means the primary judge found no major
 - **Seed spread is about the size of the differences.** The original class project compared learning rates one run each; differences of that size are within seed noise here.
 - **The rubric matters.** Making the judge's omission rule explicit (prompt v2) roughly halved every faithful rate and reordered the models. Comparisons under one fixed rubric hold up; absolute rates depend on the rubric.
 
-The [app](https://huggingface.co/spaces/itstheryguy/clinical-note-summarization) has every note, the judges' claim-level verdicts, six recurring "traps" with real examples, and the judge-reliability checks.
+The [app](https://huggingface.co/spaces/itstheryguy/clinical-note-summarization) has every note, the judges' claim-level verdicts, five recurring "traps" with real examples, and the judge-reliability checks.
 
 ## How it works
 

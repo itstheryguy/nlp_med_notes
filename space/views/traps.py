@@ -43,15 +43,6 @@ TRAPS = [
                "*something* there is usually inventing or moving content. Most hallucinations enter this way.",
     },
     {
-        "key": "empty", "title": "Writes nothing at all", "source": "tier-1",
-        "test": lambda n: n["empty_prediction"], "scope": None,
-        "why": "BART-large's \"empty\" notes are really 256 start tokens in a row (`<s><s><s>…`): some training seeds "
-               "collapse into repeating the start token, which decodes to nothing. Decoding settings can't fix it "
-               "(forcing a minimum length was tested and barely helped). And an empty note can't hallucinate, so it "
-               "scores well on a hallucination rate while being useless: a metric you can win by staying silent "
-               "needs a partner metric (omissions).",
-    },
-    {
         "key": "misplaced", "title": "Right fact, wrong field", "source": "judge",
         "test": lambda n: n["verdict"].apply(lambda v: has_label(v, {"misplaced"})), "scope": audited,
         "why": "A medication listed as a diagnosis, or past history as a current symptom. Every word is in the "
@@ -79,7 +70,7 @@ for t in TRAPS:
     for fam, g in per_run.groupby("family"):
         rows.append({"trap": t["key"], "family": fam, "rate": g["hit"].mean(), "sd": g["hit"].std(ddof=1) if len(g) > 1 else 0})
 rates = pd.DataFrame(rows)
-# Hide traps no model in this snapshot exhibits (e.g. empty notes once archived BART-large isn't included).
+# Hide traps no model in this snapshot exhibits.
 present = set(rates.groupby("trap")["rate"].max().loc[lambda r: r > 0].index)
 TRAPS = [t for t in TRAPS if t["key"] in present]
 rates = rates[rates["trap"].isin(present)]
@@ -87,7 +78,6 @@ rates = rates[rates["trap"].isin(present)]
 # Reference rates where the trap is defined for a clinician note.
 ref_rates = {
     "numbers": float((examples["ref_unsupported_numbers"] > 0).mean()),
-    "empty": 0.0,
     "misplaced": float(examples["ref_verdict"].apply(lambda v: has_label(v, {"misplaced"}))[examples["in_audit"]].mean()),
     "invented": float(examples["ref_verdict"].apply(lambda v: has_label(v, {"unsupported", "contradicted"}, True))[examples["in_audit"]].mean()),
     "omits": float(examples["ref_verdict"].apply(major_omission)[examples["in_audit"]].mean()),
